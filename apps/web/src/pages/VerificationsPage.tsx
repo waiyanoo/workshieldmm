@@ -1,0 +1,225 @@
+import { useEffect, useState, type FormEvent } from "react";
+import {
+  Alert,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Stack,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
+} from "@mui/material";
+import { useTranslation } from "react-i18next";
+import { api } from "../api/client";
+import { PageHeader, ScrollableTable, StatusChip } from "../components/ui";
+import { EMPTY_NRC, NrcInput, nrcToString, type NrcValue } from "../components/NrcInput";
+import { formatCalendarDate } from "../lib/date";
+import { apiErrorMessage } from "../i18n/apiError";
+
+interface Verification {
+  id: string;
+  status: string;
+  result: string | null;
+  createdAt: string;
+  subjectName: string | null;
+  dateOfBirth: string | null;
+  // Set when a reviewer has parked the check waiting on an answer from us.
+  infoRequest: string | null;
+  infoRequestedAt: string | null;
+}
+
+export function VerificationsPage() {
+  const { t } = useTranslation();
+  const [fullName, setFullName] = useState("");
+  const [nrc, setNrc] = useState<NrcValue>(EMPTY_NRC);
+  // Composed from the picker rather than typed, so the string that gets
+  // hashed is canonical by construction.
+  const nationalId = nrcToString(nrc);
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<Verification[]>([]);
+  const [answering, setAnswering] = useState<Verification | null>(null);
+  const [answer, setAnswer] = useState("");
+
+  async function loadList() {
+    try {
+      const res = await api<{ items: Verification[] }>("/verifications");
+      setItems(res.items);
+    } catch {
+      // Keep the initial list empty when it cannot be loaded.
+    }
+  }
+
+  useEffect(() => {
+    void loadList();
+  }, []);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setNotice(null);
+    setLoading(true);
+    try {
+      await api<Verification>("/verifications", {
+        method: "POST",
+        body: {
+          subject: {
+            fullName,
+            nationalId,
+            dateOfBirth: dateOfBirth || undefined,
+          },
+        },
+      });
+      setNotice(t("verifications.submitted"));
+      setFullName("");
+      setNrc(EMPTY_NRC);
+      setDateOfBirth("");
+      await loadList();
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Stack spacing={3}>
+      <PageHeader title={t("verifications.title")} subtitle={t("verifications.subtitle", { cost: 1 })} />
+
+      <Card>
+        <CardContent>
+          <form onSubmit={onSubmit}>
+            <Stack spacing={2}>
+              <Typography variant="subtitle1">{t("verifications.newCheck")}</Typography>
+              {error && <Alert severity="error">{error}</Alert>}
+              {notice && <Alert severity="success">{notice}</Alert>}
+              <TextField label={t("verifications.fullName")} value={fullName} onChange={(e) => setFullName(e.target.value)} required fullWidth />
+              <NrcInput value={nrc} onChange={setNrc} required />
+              <TextField label={t("verifications.dobOptional")} type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
+              <Button type="submit" variant="contained" disabled={loading || !nationalId} sx={{ alignSelf: "flex-start" }}>
+                {loading ? t("verifications.submitting") : t("verifications.submitCheck")}
+              </Button>
+            </Stack>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="subtitle1" gutterBottom>{t("verifications.recent")}</Typography>
+          <Divider sx={{ mb: 1 }} />
+          {items.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">{t("verifications.noChecks")}</Typography>
+          ) : (
+            <ScrollableTable minWidth={900}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>{t("verifications.person")}</TableCell>
+                  <TableCell>{t("verifications.dateOfBirth")}</TableCell>
+                  <TableCell>{t("reports.reference")}</TableCell>
+                  <TableCell>{t("common.status")}</TableCell>
+                  <TableCell>{t("verifications.result")}</TableCell>
+                  <TableCell>{t("verifications.created")}</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {items.map((v) => (
+                  <TableRow key={v.id}>
+                    <TableCell>{v.subjectName ?? "—"}</TableCell>
+                    <TableCell>{formatCalendarDate(v.dateOfBirth)}</TableCell>
+                    <TableCell sx={{ fontFamily: "monospace" }}>{v.id.slice(0, 8)}</TableCell>
+                    <TableCell><StatusChip status={v.status} /></TableCell>
+                    <TableCell>
+                      {/* A parked check is only actionable if we say what is
+                          being asked for and give them somewhere to answer. */}
+                      {v.status === "need_more_info" && v.infoRequest ? (
+                        <Stack spacing={0.5} alignItems="flex-start">
+                          <Typography variant="body2">{v.infoRequest}</Typography>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => {
+                              setAnswering(v);
+                              setAnswer("");
+                            }}
+                          >
+                            {t("verifications.answerReviewer")}
+                          </Button>
+                        </Stack>
+                      ) : (
+                        (v.result ?? "—")
+                      )}
+                    </TableCell>
+                    <TableCell>{new Date(v.createdAt).toLocaleString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </ScrollableTable>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={answering !== null} onClose={() => setAnswering(null)} fullWidth maxWidth="sm">
+        <DialogTitle>{t("verifications.answerTitle")}</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2} mt={1}>
+            <Alert severity="info" icon={false}>
+              <Typography variant="caption" fontWeight={700} display="block">
+                {t("verifications.reviewerAsked")}
+              </Typography>
+              <Typography variant="body2">{answering?.infoRequest}</Typography>
+            </Alert>
+            <TextField
+              label={t("verifications.yourAnswer")}
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              fullWidth
+              multiline
+              minRows={3}
+              autoFocus
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setAnswering(null)} disabled={loading}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            variant="contained"
+            disabled={loading || answer.trim().length === 0}
+            onClick={async () => {
+              if (!answering) return;
+              setLoading(true);
+              setError(null);
+              try {
+                await api(`/verifications/${answering.id}/respond`, {
+                  method: "POST",
+                  body: { answer: answer.trim() },
+                });
+                setAnswering(null);
+                setNotice(t("verifications.answerSent"));
+                await loadList();
+              } catch (err) {
+                setError(apiErrorMessage(err));
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            {t("common.submit")}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
+  );
+}

@@ -1,0 +1,32 @@
+{
+  "name": "hyper-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Employment Verification & Risk Intelligence Platform — Myanmar / SEA",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build:shared": "npm run build -w @hyper/shared",
+    "build": "npm run build -w @hyper/shared && npm run build -w @hyper/api",
+    "dev": "npm run build:shared && npm run dev -w @hyper/api",
+    "migrate": "npm run migrate -w @hyper/api",
+    "migrate:status": "npm run migrate:status -w @hyper/api",
+    "seed": "npm run seed -w @hyper/api",
+    "test": "npm run test -w @hyper/api",
+    "typecheck": "npm run typecheck -w @hyper/shared && npm run typecheck -w @hyper/api",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "infra:logs": "docker compose -f infra/docker-compose.yml logs -f"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

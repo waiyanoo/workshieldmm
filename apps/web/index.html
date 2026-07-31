@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WorkShield MM — Employment Verification</title>
+    <!-- Myanmar Unicode webfont. Windows ships "Myanmar Text" and Android has
+         Noto, but macOS/Linux frequently have no Myanmar face at all and would
+         render Burmese as tofu boxes. Self-host these two files before
+         production so the app does not depend on a third-party CDN. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+Myanmar:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Burmese has no spaces between words, so the browser needs permission to
+         break inside a run of text. `break-word` breaks only when a word would
+         otherwise overflow — `anywhere` was splitting Latin words too, turning
+         "free" into "fre e" in narrow table cells. Burmese itself wraps via the
+         browser's line-breaking data, which the lang attribute selects. */
+      html[lang="my"] body {
+        line-break: normal;
+        word-break: normal;
+        overflow-wrap: break-word;
+        /* Stacked Burmese glyphs need more vertical room than Latin. */
+        line-height: 1.7;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
