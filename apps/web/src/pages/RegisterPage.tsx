@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link as RouterLink, Navigate } from "react-router-dom";
-import { Alert, Button, Divider, Link, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControlLabel, Link, Stack, Step, StepLabel, Stepper, TextField, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthContext";
 import { apiErrorMessage } from "../i18n/apiError";
@@ -16,6 +16,9 @@ export function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nrc, setNrc] = useState<NrcValue>(EMPTY_NRC);
+  const [declarationAccepted, setDeclarationAccepted] = useState(false);
+  const [step, setStep] = useState(0);
+  const [declarationOpen, setDeclarationOpen] = useState(false);
   // Composed from the picker, so what reaches the API is already canonical.
   const nationalId = nrcToString(nrc);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +34,7 @@ export function RegisterPage() {
       await register({
         company: { legalName, registrationNumber },
         admin: { fullName, email, password, nationalId },
+        declaration: { accepted: true, version: "2026-08" },
       });
     } catch (err) {
       setError(apiErrorMessage(err));
@@ -48,19 +52,42 @@ export function RegisterPage() {
             {t("register.pendingMessage")}
           </Typography>
           {error && <Alert severity="error">{error}</Alert>}
-          <TextField label={t("register.legalName")} value={legalName} onChange={(e) => setLegalName(e.target.value)} required fullWidth />
-          <TextField label={t("register.registrationNumber")} value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} required fullWidth />
-          <Divider>{t("register.administrator")}</Divider>
-          <TextField label={t("register.adminName")} value={fullName} onChange={(e) => setFullName(e.target.value)} required fullWidth />
-          <NrcInput value={nrc} onChange={setNrc} required />
-          <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-            {t("register.nrcHint")}
-          </Typography>
-          <TextField label={t("auth.email")} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required fullWidth />
-          <TextField label={t("auth.password")} type="password" value={password} onChange={(e) => setPassword(e.target.value)} required fullWidth helperText={t("register.passwordHint")} />
-          <Button type="submit" variant="contained" size="large" disabled={loading || !nationalId}>
-            {loading ? t("register.creating") : t("register.submit")}
-          </Button>
+          <Stepper activeStep={step} alternativeLabel sx={{ mb: 1 }}>
+            <Step><StepLabel>{t("register.steps.company")}</StepLabel></Step>
+            <Step><StepLabel>{t("register.steps.administrator")}</StepLabel></Step>
+            <Step><StepLabel>{t("register.steps.confirm")}</StepLabel></Step>
+          </Stepper>
+
+          {step === 0 && <Stack spacing={2}>
+            <Typography variant="subtitle1">{t("register.companyStepTitle")}</Typography>
+            <TextField label={t("register.legalName")} value={legalName} onChange={(e) => setLegalName(e.target.value)} required fullWidth />
+            <TextField label={t("register.registrationNumber")} value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} required fullWidth />
+            <Button variant="contained" onClick={() => setStep(1)} disabled={!legalName.trim() || !registrationNumber.trim()}>{t("common.next")}</Button>
+          </Stack>}
+
+          {step === 1 && <Stack spacing={2}>
+            <Divider>{t("register.administrator")}</Divider>
+            <TextField label={t("register.adminName")} value={fullName} onChange={(e) => setFullName(e.target.value)} required fullWidth />
+            <NrcInput value={nrc} onChange={setNrc} required />
+            <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>{t("register.nrcHint")}</Typography>
+            <TextField label={t("auth.email")} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required fullWidth />
+            <TextField label={t("auth.password")} type="password" value={password} onChange={(e) => setPassword(e.target.value)} required fullWidth helperText={t("register.passwordHint")} />
+            <Stack direction="row" spacing={1} justifyContent="space-between"><Button onClick={() => setStep(0)}>{t("common.back")}</Button><Button variant="contained" onClick={() => setStep(2)} disabled={!fullName.trim() || !email.trim() || password.length < 8 || !nationalId}>{t("common.next")}</Button></Stack>
+          </Stack>}
+
+          {step === 2 && <Stack spacing={2}>
+            <Typography variant="subtitle1">{t("register.confirmStepTitle")}</Typography>
+            <Alert severity="info" icon={false}>
+              <Typography variant="body2">{legalName}</Typography>
+              <Typography variant="body2" color="text.secondary">{registrationNumber} · {email}</Typography>
+            </Alert>
+            <FormControlLabel
+              control={<Checkbox checked={declarationAccepted} onChange={(e) => setDeclarationAccepted(e.target.checked)} />}
+              label={<Typography variant="body2">{t("register.declarationShort")}</Typography>}
+            />
+            <Button variant="text" sx={{ alignSelf: "flex-start" }} onClick={() => setDeclarationOpen(true)}>{t("register.readDeclaration")}</Button>
+            <Stack direction="row" spacing={1} justifyContent="space-between"><Button onClick={() => setStep(1)} disabled={loading}>{t("common.back")}</Button><Button type="submit" variant="contained" size="large" disabled={loading || !declarationAccepted}>{loading ? t("register.creating") : t("register.submit")}</Button></Stack>
+          </Stack>}
           <Typography variant="body2" color="text.secondary">
             {t("register.haveAccount")} {" "}
             <Link component={RouterLink} to="/login">
@@ -69,6 +96,11 @@ export function RegisterPage() {
           </Typography>
         </Stack>
       </form>
+      <Dialog open={declarationOpen} onClose={() => setDeclarationOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>{t("register.declarationTitle")}</DialogTitle>
+        <DialogContent dividers><Stack spacing={2}><Typography variant="body2">{t("register.declaration")}</Typography><Typography variant="caption" color="text.secondary">{t("register.declarationVersion")}</Typography></Stack></DialogContent>
+        <DialogActions><Button onClick={() => setDeclarationOpen(false)}>{t("common.close")}</Button></DialogActions>
+      </Dialog>
     </AuthShell>
   );
 }

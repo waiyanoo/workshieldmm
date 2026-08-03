@@ -55,6 +55,8 @@ export async function getReceipt(user: AuthUser, intentId: string) {
       billing_cycle: string | null;
       credits: number;
       amount_mmk: number;
+      list_amount_mmk: number | null;
+      discount_percent: number;
       provider: string;
       status: string;
       created_at: string;
@@ -76,6 +78,7 @@ export async function getReceipt(user: AuthUser, intentId: string) {
     }>(
       `SELECT p.id, p.receipt_number, p.reference_code, p.payer_reference,
               p.kind, p.plan, p.billing_cycle, p.credits, p.amount_mmk,
+              p.list_amount_mmk, p.discount_percent,
               p.provider, p.status, p.created_at, p.decided_at,
               c.legal_name AS company_name, c.registration_number,
               c.address_line, c.township, c.city, c.region,
@@ -127,9 +130,22 @@ export async function getReceipt(user: AuthUser, intentId: string) {
             ? `${r.plan_name ?? r.plan} plan — ${r.billing_cycle === "annual" ? "12 months" : "1 month"}`
             : `${r.credits} credits`,
           credits: isSubscription ? null : r.credits,
-          amountMmk: r.amount_mmk,
+          // The list price, not what was charged. The discount is its own line
+          // below, so charging price here would subtract the discount twice and
+          // leave a receipt whose lines do not add up to its total.
+          amountMmk: r.list_amount_mmk ?? r.amount_mmk,
         },
       ],
+      // A customer comparing two invoices months apart should be able to see
+      // why they differ, so the discount stays on the document.
+      discount:
+        r.discount_percent > 0 && r.list_amount_mmk
+          ? {
+              percentOff: r.discount_percent,
+              listMmk: r.list_amount_mmk,
+              savedMmk: r.list_amount_mmk - r.amount_mmk,
+            }
+          : null,
       totalMmk: r.amount_mmk,
       currency: "MMK",
       payment: {

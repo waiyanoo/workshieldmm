@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Box, Card, CardContent, Chip, Stack, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
+import { alpha } from "@mui/material/styles";
 import { api } from "../api/client";
 import { apiErrorMessage } from "../i18n/apiError";
 import { brand } from "../theme";
@@ -19,7 +20,7 @@ interface CreditSummary {
   recent: { delta: number; action: string; resourceType: string | null; createdAt: string }[];
 }
 
-export function CreditBalance() {
+export function CreditBalance({ glass = false }: { glass?: boolean }) {
   const { t } = useTranslation();
   const [summary, setSummary] = useState<CreditSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +46,18 @@ export function CreditBalance() {
   const expiringSoon = soon.reduce((sum, e) => sum + e.remaining, 0);
 
   return (
-    <Card>
+    <Card
+      sx={
+        glass
+          ? {
+              height: "100%",
+              background: `linear-gradient(145deg, ${alpha("#FFFFFF", 0.9)}, ${alpha("#EAF1FF", 0.76)})`,
+              backdropFilter: "blur(16px)",
+              borderColor: alpha(brand.primary, 0.14),
+            }
+          : undefined
+      }
+    >
       <CardContent>
         <Stack spacing={2}>
           <Box>

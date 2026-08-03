@@ -17,6 +17,7 @@ import {
   setReviewerNote,
 } from "./queue.service";
 import { getPlatformStats } from "./stats.service";
+import { getOperationalSummary } from "./operations.service";
 import { grantSubscription } from "./subscriptions.service";
 
 export const adminRouter = Router();
@@ -27,6 +28,17 @@ adminRouter.use(requireAuth);
 const decisionSchema = z.object({
   status: z.enum(["completed", "not_found"]),
   result: z.string().max(300).optional(),
+  source: z.object({
+    sourceCompany: z.string().trim().min(2).max(200),
+    contactName: z.string().trim().min(2).max(200),
+    contactDetails: z.string().trim().max(300).optional(),
+    contactMethod: z.enum(["phone", "email", "letter", "portal", "in_person", "document", "other"]),
+    response: z.enum(["employment_confirmed", "no_record", "unable_to_confirm"]),
+    employmentStartDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    employmentEndDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    evidenceReference: z.string().trim().max(300).optional(),
+    verifiedAt: z.string().datetime({ offset: true }).optional(),
+  }),
 });
 
 const QUEUE_STATUSES = ["pending", "need_more_info", "completed", "not_found", "all"];
@@ -63,6 +75,14 @@ adminRouter.get(
   requireRole("admin_reviewer", "super_admin"),
   asyncHandler(async (req, res) => {
     res.json(await getQueueStats(req.user!));
+  })
+);
+
+adminRouter.get(
+  "/operations",
+  requireRole("admin_reviewer", "super_admin"),
+  asyncHandler(async (req, res) => {
+    res.json(await getOperationalSummary(req.user!));
   })
 );
 

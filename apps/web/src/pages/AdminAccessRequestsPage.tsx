@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import {
   Alert,
+  Box,
   Button,
-  Card,
   CardContent,
   Stack,
   TableBody,
@@ -11,8 +11,9 @@ import {
   TableRow,
 } from "@mui/material";
 import { useTranslation } from "react-i18next";
+import KeyIcon from "@mui/icons-material/VpnKey";
 import { api, ApiError } from "../api/client";
-import { EmptyState, PageHeader, ScrollableTable } from "../components/ui";
+import { BentoStatCard, EmptyState, GlassCard, PageHeader, ScrollableTable } from "../components/ui";
 
 interface AccessRequest {
   id: string;
@@ -63,8 +64,11 @@ export function AdminAccessRequestsPage() {
       />
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "minmax(0, 260px)" }, gap: 2, mb: 2 }}>
+        <BentoStatCard label={t("admin.accessRequestsTitle")} value={items.length} icon={<KeyIcon />} tone="#175CD3" />
+      </Box>
 
-      <Card>
+      <GlassCard>
         <CardContent>
           {items.length === 0 ? (
             <EmptyState title={t("admin.noAccessRequests")} />
@@ -112,7 +116,7 @@ export function AdminAccessRequestsPage() {
             </ScrollableTable>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
     </>
   );
 }

@@ -6,4 +6,8 @@ export interface AuthUser {
   userType: "company" | "platform";
   role: Role;
   companyId?: string;
+  /** On an admin-issued temporary password; every route but change-password is closed. */
+  mustChangePassword?: boolean;
+  /** Role requires MFA and none is enrolled; only the setup routes are open. */
+  mfaSetupRequired?: boolean;
 }

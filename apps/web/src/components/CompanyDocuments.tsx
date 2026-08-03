@@ -9,7 +9,6 @@ import {
   DialogTitle,
   MenuItem,
   Stack,
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -23,7 +22,7 @@ import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import { useTranslation } from "react-i18next";
 import { api, uploadFile } from "../api/client";
 import { apiErrorMessage } from "../i18n/apiError";
-import { StatusChip } from "./ui";
+import { ScrollableTable, StatusChip } from "./ui";
 
 interface Doc {
   id: string;
@@ -150,7 +149,7 @@ export function CompanyDocuments({
       {docs.length === 0 ? (
         <Typography variant="body2" color="text.secondary">{t("documents.none")}</Typography>
       ) : (
-        <Table size="small">
+        <ScrollableTable minWidth={620}>
           <TableHead>
             <TableRow>
               <TableCell>{t("documents.documentType")}</TableCell>
@@ -211,7 +210,7 @@ export function CompanyDocuments({
               </TableRow>
             ))}
           </TableBody>
-        </Table>
+        </ScrollableTable>
       )}
       {/* Rejecting needs a reason — it is what the company is asked to fix. */}
       <Dialog open={rejecting !== null} onClose={() => setRejecting(null)} fullWidth maxWidth="xs">

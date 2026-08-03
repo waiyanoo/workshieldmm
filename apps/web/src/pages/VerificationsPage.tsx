@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
   Alert,
+  Box,
   Button,
-  Card,
   CardContent,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
@@ -19,7 +20,7 @@ import {
 } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
-import { PageHeader, ScrollableTable, StatusChip } from "../components/ui";
+import { GlassCard, PageHeader, ScrollableTable, StatusChip } from "../components/ui";
 import { EMPTY_NRC, NrcInput, nrcToString, type NrcValue } from "../components/NrcInput";
 import { formatCalendarDate } from "../lib/date";
 import { apiErrorMessage } from "../i18n/apiError";
@@ -44,6 +45,7 @@ export function VerificationsPage() {
   // hashed is canonical by construction.
   const nationalId = nrcToString(nrc);
   const [dateOfBirth, setDateOfBirth] = useState("");
+  const [consentConfirmed, setConsentConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -78,12 +80,16 @@ export function VerificationsPage() {
             nationalId,
             dateOfBirth: dateOfBirth || undefined,
           },
+          authorization: {
+            confirmed: true,
+          },
         },
       });
       setNotice(t("verifications.submitted"));
       setFullName("");
       setNrc(EMPTY_NRC);
       setDateOfBirth("");
+      setConsentConfirmed(false);
       await loadList();
     } catch (err) {
       setError(apiErrorMessage(err));
@@ -94,27 +100,49 @@ export function VerificationsPage() {
 
   return (
     <Stack spacing={3}>
-      <PageHeader title={t("verifications.title")} subtitle={t("verifications.subtitle", { cost: 1 })} />
+      <PageHeader title={t("verifications.title")} subtitle={t("verifications.subtitle", { cost: 5 })} />
 
-      <Card>
+      <GlassCard>
         <CardContent>
           <form onSubmit={onSubmit}>
             <Stack spacing={2}>
               <Typography variant="subtitle1">{t("verifications.newCheck")}</Typography>
               {error && <Alert severity="error">{error}</Alert>}
               {notice && <Alert severity="success">{notice}</Alert>}
-              <TextField label={t("verifications.fullName")} value={fullName} onChange={(e) => setFullName(e.target.value)} required fullWidth />
-              <NrcInput value={nrc} onChange={setNrc} required />
-              <TextField label={t("verifications.dobOptional")} type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
-              <Button type="submit" variant="contained" disabled={loading || !nationalId} sx={{ alignSelf: "flex-start" }}>
-                {loading ? t("verifications.submitting") : t("verifications.submitCheck")}
+              <Box sx={{ border: 1, borderColor: "divider", borderRadius: 2, p: 2 }}>
+                <Stack spacing={2}>
+                  <Typography variant="subtitle2">{t("verifications.personDetails")}</Typography>
+                  <TextField label={t("verifications.fullName")} value={fullName} onChange={(e) => setFullName(e.target.value)} required fullWidth />
+                  <NrcInput value={nrc} onChange={setNrc} required />
+                  <TextField label={t("verifications.dobOptional")} type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
+                </Stack>
+              </Box>
+              <Box sx={{ border: 1, borderColor: "divider", borderRadius: 2, p: 2 }}>
+                <Stack spacing={2}>
+                  <Typography variant="subtitle2">{t("verifications.consentTitle")}</Typography>
+                  <Alert severity="info">{t("verifications.consentHint")}</Alert>
+                  <Stack direction="row" spacing={0.5} alignItems="flex-start">
+                    <Checkbox
+                      checked={consentConfirmed}
+                      onChange={(e) => setConsentConfirmed(e.target.checked)}
+                      inputProps={{ "aria-label": t("verifications.consentConfirm") }}
+                    />
+                    <Typography variant="body2" sx={{ pt: 1.15 }}>
+                      {t("verifications.consentConfirm")}
+                    </Typography>
+                  </Stack>
+                </Stack>
+              </Box>
+              <Alert severity="info" icon={false}>{t("verifications.creditCharge", { cost: 5 })}</Alert>
+              <Button type="submit" variant="contained" disabled={loading || !nationalId || !consentConfirmed} sx={{ alignSelf: "flex-start" }}>
+                {loading ? t("verifications.submitting") : t("verifications.submitCheckWithCost", { cost: 5 })}
               </Button>
             </Stack>
           </form>
         </CardContent>
-      </Card>
+      </GlassCard>
 
-      <Card>
+      <GlassCard>
         <CardContent>
           <Typography variant="subtitle1" gutterBottom>{t("verifications.recent")}</Typography>
           <Divider sx={{ mb: 1 }} />
@@ -167,7 +195,7 @@ export function VerificationsPage() {
             </ScrollableTable>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
 
       <Dialog open={answering !== null} onClose={() => setAnswering(null)} fullWidth maxWidth="sm">
         <DialogTitle>{t("verifications.answerTitle")}</DialogTitle>

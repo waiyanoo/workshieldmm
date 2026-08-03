@@ -15,7 +15,6 @@ import {
   Chip,
   Divider,
   Stack,
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -28,7 +27,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import { apiErrorMessage } from "../i18n/apiError";
 import { useAuth } from "../auth/AuthContext";
-import { PageHeader, StatusChip } from "../components/ui";
+import { PageHeader, ScrollableTable, StatusChip } from "../components/ui";
 
 interface Profile {
   company: {
@@ -360,7 +359,7 @@ export function ProfilePage() {
               {t("profile.teamAccess")}
             </Typography>
             <Divider sx={{ mb: 1 }} />
-            <Table size="small">
+            <ScrollableTable minWidth={620}>
               <TableHead>
                 <TableRow>
                   <TableCell>{t("profile.fullName")}</TableCell>
@@ -381,7 +380,7 @@ export function ProfilePage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+            </ScrollableTable>
           </CardContent>
         </Card>
       </Stack>

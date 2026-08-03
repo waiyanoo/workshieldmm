@@ -68,6 +68,7 @@ interface Receipt {
     purchasedByName: string | null;
   };
   lines: { kind: string; description: string; credits: number | null; amountMmk: number }[];
+  discount: { percentOff: number; listMmk: number; savedMmk: number } | null;
   totalMmk: number;
   currency: string;
   payment: { method: string; provider: string; status: string };
@@ -326,6 +327,16 @@ function ReceiptDialog({ receipt, onClose }: { receipt: Receipt | null; onClose:
                   <TableCell align="right">{mmk(l.amountMmk)}</TableCell>
                 </TableRow>
               ))}
+              {receipt.discount && (
+                <TableRow>
+                  <TableCell>
+                    {t("receipts.discountLine", { percent: receipt.discount.percentOff })}
+                  </TableCell>
+                  <TableCell align="right">
+                    −{mmk(receipt.discount.savedMmk)}
+                  </TableCell>
+                </TableRow>
+              )}
               <TableRow>
                 <TableCell>
                   <Typography fontWeight={700}>{t("receipts.total")}</Typography>

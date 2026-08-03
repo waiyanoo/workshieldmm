@@ -29,8 +29,12 @@ import RuleIcon from "@mui/icons-material/Rule";
 import BusinessIcon from "@mui/icons-material/Business";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import PaymentsIcon from "@mui/icons-material/Payments";
+import LocalOfferIcon from "@mui/icons-material/LocalOffer";
+import CategoryIcon from "@mui/icons-material/Category";
+import MonitorHeartIcon from "@mui/icons-material/MonitorHeart";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import InsightsIcon from "@mui/icons-material/Insights";
+import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
 import PolicyIcon from "@mui/icons-material/Policy";
 import KeyIcon from "@mui/icons-material/VpnKey";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
@@ -106,6 +110,7 @@ function navFor(
 
   if (role === "admin_reviewer" || role === "super_admin") {
     const items: NavItem[] = [
+      { label: t("nav.operations"), to: "/admin/operations", icon: <MonitorHeartIcon /> },
       { label: t("nav.checkQueue"), to: "/admin/verifications", icon: <RuleIcon /> },
     ];
     if (tierB) {
@@ -122,6 +127,9 @@ function navFor(
       { label: t("nav.stats"), to: "/admin/stats", icon: <InsightsIcon /> },
       { label: t("nav.companies"), to: "/admin/companies", icon: <BusinessIcon /> },
       { label: t("nav.payments"), to: "/admin/payments", icon: <PaymentsIcon /> },
+      { label: t("nav.promotions"), to: "/admin/promotions", icon: <LocalOfferIcon /> },
+      { label: t("nav.reportCategories"), to: "/admin/report-categories", icon: <CategoryIcon /> },
+      { label: t("nav.accounts"), to: "/admin/accounts", icon: <ManageAccountsIcon /> },
       { label: t("nav.auditLogs"), to: "/admin/audit", icon: <ReceiptLongIcon /> },
     ];
     if (tierB) {
@@ -149,11 +157,15 @@ const PAGE_TITLES: Record<string, string> = {
   "/profile": "nav.profile",
   "/admin/payments": "nav.payments",
   "/admin/verifications": "nav.checkQueue",
+  "/admin/operations": "nav.operations",
   "/admin/reports": "nav.reportReview",
   "/admin/oversight": "nav.oversight",
   "/admin/access-requests": "nav.accessRequests",
   "/admin/stats": "nav.stats",
   "/admin/companies": "nav.companies",
+  "/admin/promotions": "nav.promotions",
+  "/admin/report-categories": "nav.reportCategories",
+  "/admin/accounts": "nav.accounts",
   "/admin/audit": "nav.auditLogs",
 };
 

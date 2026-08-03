@@ -173,13 +173,13 @@ describe("NRC normalisation", () => {
     const first = await request(app)
       .post("/verifications")
       .set("Authorization", `Bearer ${a.token}`)
-      .send({ subject: { fullName: "Daw Mya Mya", nationalId: "12/OUKAMA(N)778899" } })
+      .send({ subject: { fullName: "Daw Mya Mya", nationalId: "12/OUKAMA(N)778899" }, authorization: helpers.verificationAuthorization() })
       .expect(201);
 
     const second = await request(app)
       .post("/verifications")
       .set("Authorization", `Bearer ${b.token}`)
-      .send({ subject: { fullName: "Daw Mya Mya", nationalId: "12 / oukama (n) 778899" } })
+      .send({ subject: { fullName: "Daw Mya Mya", nationalId: "12 / oukama (n) 778899" }, authorization: helpers.verificationAuthorization() })
       .expect(201);
 
     expect(second.body.subjectId).toBe(first.body.subjectId);

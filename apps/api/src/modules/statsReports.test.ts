@@ -101,6 +101,7 @@ async function submitReport(companyToken: string) {
   await request(app)
     .post(`/reports/${reportId}/submit`)
     .set("Authorization", `Bearer ${companyToken}`)
+    .send({ declaration: { accepted: true, version: "2026-08" } })
     .expect(200);
   return { reportId, nationalId };
 }

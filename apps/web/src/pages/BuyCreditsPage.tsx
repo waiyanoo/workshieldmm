@@ -12,7 +12,6 @@ import {
   Alert,
   Box,
   Button,
-  Card,
   CardContent,
   Chip,
   FormControlLabel,
@@ -23,7 +22,6 @@ import {
   DialogTitle,
   Divider,
   Stack,
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -34,15 +32,24 @@ import {
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import { Trans, useTranslation } from "react-i18next";
 import { api, uploadFile, ApiError } from "../api/client";
-import { EmptyState, PageHeader, StatusChip } from "../components/ui";
+import { EmptyState, GlassCard, PageHeader, ScrollableTable, StatusChip } from "../components/ui";
 import { formatCalendarDate } from "../lib/date";
 import { brand } from "../theme";
+
+interface Promotion {
+  name: string;
+  percentOff: number;
+  endsAt: string;
+}
 
 interface Plan {
   plan: string;
   displayName: string;
   monthlyMmk: number;
   annualMmk: number;
+  /** Undiscounted price, for the struck-through figure beside the real one. */
+  monthlyListMmk: number;
+  annualListMmk: number;
   monthlyCredits: number;
   annualSavingMmk: number;
 }
@@ -58,6 +65,7 @@ interface Package {
   name: string;
   credits: number;
   priceMmk: number;
+  listPriceMmk: number;
   mmkPerCredit: number;
 }
 
@@ -107,6 +115,7 @@ export function BuyCreditsPage() {
   const [currentPlan, setCurrentPlan] = useState<CurrentPlan | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
   const [methods, setMethods] = useState<Method[]>([]);
+  const [promotion, setPromotion] = useState<Promotion | null>(null);
   const [annual, setAnnual] = useState(false);
   const [history, setHistory] = useState<PaymentRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +134,7 @@ export function BuyCreditsPage() {
           currentPlan: CurrentPlan | null;
           packages: Package[];
           methods: Method[];
+          promotion: Promotion | null;
         }>("/payments/options"),
         api<{ items: PaymentRow[] }>("/payments"),
       ]);
@@ -132,6 +142,7 @@ export function BuyCreditsPage() {
       setCurrentPlan(opts.currentPlan);
       setPackages(opts.packages);
       setMethods(opts.methods);
+      setPromotion(opts.promotion);
       setHistory(mine.items);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load purchase options");
@@ -212,6 +223,22 @@ export function BuyCreditsPage() {
         subtitle={t("billing.subtitle")}
       />
 
+      {/* Above every price, so nobody reads a figure without knowing it is
+          already discounted. */}
+      {promotion && (
+        <Alert severity="success" icon={false} sx={{ mb: 3 }}>
+          <Typography variant="subtitle2">
+            {t("billing.promoTitle", { percent: promotion.percentOff })}
+          </Typography>
+          <Typography variant="body2">
+            {t("billing.promoBody", {
+              percent: promotion.percentOff,
+              date: formatCalendarDate(promotion.endsAt.slice(0, 10)),
+            })}
+          </Typography>
+        </Alert>
+      )}
+
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
 
@@ -233,119 +260,86 @@ export function BuyCreditsPage() {
           {t("billing.noMethods")}
         </Alert>
       ) : (
-      <>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-          <Typography variant="subtitle2">{t("billing.monthlyPlans")}</Typography>
-          <FormControlLabel
-            control={<Switch checked={annual} onChange={(e) => setAnnual(e.target.checked)} />}
-            label={t("billing.payAnnually")}
-          />
-        </Stack>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {t("billing.plansBlurb")}
-        </Typography>
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "repeat(12, minmax(0, 1fr))" }, alignItems: "start", gap: 2, mb: 4 }}>
+          <GlassCard sx={{ gridColumn: "1 / -1" }}>
+            <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+              <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ sm: "center" }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
+                <Typography variant="subtitle1">{t("billing.monthlyPlans")}</Typography>
+                <FormControlLabel control={<Switch checked={annual} onChange={(e) => setAnnual(e.target.checked)} />} label={t("billing.payAnnually")} />
+              </Stack>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                {t("billing.plansBlurb")}
+              </Typography>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 2 }}>
+                {plans.map((pl) => (
+                  <GlassCard key={pl.plan} sx={{ height: "100%", background: "rgba(255,255,255,0.66)" }}>
+                    <CardContent sx={{ height: "100%", display: "flex", flexDirection: "column", p: 2 }}>
+                      <Typography variant="h6">{pl.displayName}</Typography>
+                      <Stack direction="row" spacing={1} alignItems="baseline" flexWrap="wrap" sx={{ mt: 1 }}>
+                        <Typography variant="h5" sx={{ color: brand.primary, fontWeight: 700 }}>
+                          {mmk(annual ? pl.annualMmk : pl.monthlyMmk)}
+                        </Typography>
+                        {(annual ? pl.annualListMmk : pl.monthlyListMmk) > (annual ? pl.annualMmk : pl.monthlyMmk) && (
+                          <Typography variant="body2" color="text.secondary" sx={{ textDecoration: "line-through" }}>
+                            {mmk(annual ? pl.annualListMmk : pl.monthlyListMmk)}
+                          </Typography>
+                        )}
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">{annual ? t("billing.perYear") : t("billing.perMonth")}</Typography>
+                      {annual && pl.annualSavingMmk > 0 && <Chip size="small" color="success" label={t("billing.save", { amount: mmk(pl.annualSavingMmk) })} sx={{ alignSelf: "flex-start", mt: 1 }} />}
+                      <Typography variant="body2" sx={{ mt: 1.5 }}>{t("billing.creditsEveryMonth", { count: pl.monthlyCredits })}</Typography>
+                      <Stack spacing={1} sx={{ mt: "auto", pt: 2 }}>
+                        {methods.map((m) => <Button key={m.provider} size="small" variant={m.provider === "kbzpay" ? "contained" : "outlined"} disabled={busy} onClick={() => startSubscription(pl, m.provider)}>{currentPlan?.plan === pl.plan ? t("billing.renewWith", { method: m.displayName }) : t("billing.subscribeWith", { method: m.displayName })}</Button>)}
+                      </Stack>
+                    </CardContent>
+                  </GlassCard>
+                ))}
+              </Box>
+            </CardContent>
+          </GlassCard>
 
-        <Stack
-          direction={{ xs: "column", md: "row" }}
-          spacing={2}
-          sx={{ mb: 4 }}
-          useFlexGap
-          flexWrap="wrap"
-        >
-          {plans.map((pl) => (
-            <Card key={pl.plan} sx={{ flex: "1 1 260px", minWidth: 260 }}>
-              <CardContent>
-                <Stack spacing={1}>
-                  <Typography variant="h6">{pl.displayName}</Typography>
-                  <Typography variant="h5" sx={{ color: brand.primary, fontWeight: 700 }}>
-                    {mmk(annual ? pl.annualMmk : pl.monthlyMmk)}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {annual ? t("billing.perYear") : t("billing.perMonth")}
-                  </Typography>
-                  {annual && pl.annualSavingMmk > 0 && (
-                    <Chip
-                      size="small"
-                      color="success"
-                      label={t("billing.save", { amount: mmk(pl.annualSavingMmk) })}
-                      sx={{ alignSelf: "flex-start" }}
-                    />
-                  )}
-                  <Typography variant="body2">
-                    {t("billing.creditsEveryMonth", { count: pl.monthlyCredits })}
-                  </Typography>
-                  <Stack spacing={1} sx={{ pt: 1 }}>
-                    {methods.map((m) => (
-                      <Button
-                        key={m.provider}
-                        size="small"
-                        variant={m.provider === "kbzpay" ? "contained" : "outlined"}
-                        disabled={busy}
-                        onClick={() => startSubscription(pl, m.provider)}
-                      >
-                        {currentPlan?.plan === pl.plan
-                          ? t("billing.renewWith", { method: m.displayName })
-                          : t("billing.subscribeWith", { method: m.displayName })}
-                      </Button>
-                    ))}
-                  </Stack>
-                </Stack>
-              </CardContent>
-            </Card>
-          ))}
-        </Stack>
-
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          {t("billing.creditPacks")}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {t("billing.packsBlurb")}
-        </Typography>
-        <Stack direction={{ xs: "column", md: "row" }} spacing={2} sx={{ mb: 4 }} useFlexGap flexWrap="wrap">
-          {packages.map((p) => (
-            <Card key={p.key} sx={{ flex: "1 1 220px", minWidth: 220 }}>
-              <CardContent>
-                <Stack spacing={1}>
-                  <Typography variant="h5" sx={{ color: brand.primary, fontWeight: 700 }}>
-                    {p.credits}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    credits
-                  </Typography>
-                  <Typography variant="h6">{mmk(p.priceMmk)}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {t("billing.perCredit", { amount: mmk(p.mmkPerCredit) })}
-                  </Typography>
-                  <Stack spacing={1} sx={{ pt: 1 }}>
-                    {methods.map((m) => (
-                      <Button
-                        key={m.provider}
-                        size="small"
-                        variant={m.provider === "kbzpay" ? "contained" : "outlined"}
-                        disabled={busy}
-                        onClick={() => startPurchase(p, m.provider)}
-                      >
-                        {t("billing.payWith", { method: m.displayName })}
-                      </Button>
-                    ))}
-                  </Stack>
-                </Stack>
-              </CardContent>
-            </Card>
-          ))}
-        </Stack>
-      </>
+          <GlassCard sx={{ gridColumn: "1 / -1" }}>
+            <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+              <Typography variant="subtitle1">{t("billing.creditPacks")}</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2 }}>
+                {t("billing.packsBlurb")}
+              </Typography>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 1.5 }}>
+                {packages.map((p) => (
+                  <GlassCard key={p.key} sx={{ background: "rgba(255,255,255,0.66)" }}>
+                    <CardContent sx={{ p: 2 }}>
+                      <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="h5" sx={{ color: brand.primary, fontWeight: 700 }}>{p.credits}</Typography>
+                          <Typography variant="caption" color="text.secondary">credits</Typography>
+                        </Box>
+                        <Box textAlign="right">
+                          <Typography variant="subtitle1">{mmk(p.priceMmk)}</Typography>
+                          {p.listPriceMmk > p.priceMmk && <Typography variant="caption" color="text.secondary" sx={{ textDecoration: "line-through" }}>{mmk(p.listPriceMmk)}</Typography>}
+                          <Typography variant="caption" color="text.secondary" display="block">{t("billing.perCredit", { amount: mmk(p.mmkPerCredit) })}</Typography>
+                        </Box>
+                      </Stack>
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1.5 }}>
+                        {methods.map((m) => <Button key={m.provider} size="small" fullWidth variant={m.provider === "kbzpay" ? "contained" : "outlined"} disabled={busy} onClick={() => startPurchase(p, m.provider)}>{t("billing.payWith", { method: m.displayName })}</Button>)}
+                      </Stack>
+                    </CardContent>
+                  </GlassCard>
+                ))}
+              </Box>
+            </CardContent>
+          </GlassCard>
+        </Box>
       )}
 
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
         {t("billing.history")}
       </Typography>
-      <Card>
+      <GlassCard>
         <CardContent>
           {history.length === 0 ? (
             <EmptyState title={t("billing.noPurchases")} />
           ) : (
-            <Table size="small">
+            <ScrollableTable minWidth={720}>
               <TableHead>
                 <TableRow>
                   <TableCell>{t("billing.reference")}</TableCell>
@@ -381,10 +375,10 @@ export function BuyCreditsPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+            </ScrollableTable>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
 
       {/* Pay + declare */}
       <Dialog open={intent !== null} onClose={() => setIntent(null)} fullWidth maxWidth="sm">

@@ -19,10 +19,14 @@ export function ProtectedRoute({
    */
   requiresVerifiedCompany?: boolean;
 }) {
-  const { user } = useAuth();
+  const { user, mustChangePassword, mfaSetupRequired } = useAuth();
   const company = useCompanyStatus();
 
   if (!user) return <Navigate to="/login" replace />;
+  // A temporary password reaches exactly one screen. The API enforces this too;
+  // this only spares the user a wall of 403s on the way there.
+  if (mustChangePassword) return <Navigate to="/change-password" replace />;
+  if (mfaSetupRequired) return <Navigate to="/mfa-setup" replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
 
   if (requiresVerifiedCompany && user.userType === "company") {

@@ -3,8 +3,8 @@ import { asyncHandler } from "../../lib/asyncHandler";
 import { validateBody } from "../../middleware/validate";
 import { requireAuth } from "../../middleware/auth";
 import { authLimiter } from "../../middleware/rateLimit";
-import { confirmMfa, login, logout, refresh, startMfaSetup } from "./auth.service";
-import { loginSchema, logoutSchema, mfaVerifySchema, refreshSchema } from "./auth.schemas";
+import { changeOwnPassword, confirmMfa, login, logout, refresh, startMfaSetup } from "./auth.service";
+import { changePasswordSchema, loginSchema, logoutSchema, mfaVerifySchema, refreshSchema } from "./auth.schemas";
 
 export const authRouter = Router();
 
@@ -47,6 +47,25 @@ authRouter.post(
   })
 );
 
+// Replace your own password. Reachable while a temporary password is
+// outstanding — it is the only thing that is. (middleware/auth.ts)
+authRouter.post(
+  "/change-password",
+  authLimiter,
+  requireAuth,
+  validateBody(changePasswordSchema),
+  asyncHandler(async (req, res) => {
+    res.json(
+      await changeOwnPassword(req.user!, {
+        currentPassword: req.body.currentPassword,
+        newPassword: req.body.newPassword,
+        ip: req.ip,
+        userAgent: req.headers["user-agent"],
+      })
+    );
+  })
+);
+
 authRouter.post(
   "/mfa/setup",
   requireAuth,
@@ -61,7 +80,10 @@ authRouter.post(
   requireAuth,
   validateBody(mfaVerifySchema),
   asyncHandler(async (req, res) => {
-    const result = await confirmMfa(req.user!, req.body.code);
+    const result = await confirmMfa(req.user!, req.body.code, {
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
     res.json(result);
   })
 );

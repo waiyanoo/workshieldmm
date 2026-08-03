@@ -265,7 +265,7 @@ describe("team management", () => {
     await request(app)
       .post("/verifications")
       .set("Authorization", `Bearer ${token}`)
-      .send({ subject: { fullName: name, nationalId: helpers.uniq("12/ABC(N)") } })
+      .send({ subject: { fullName: name, nationalId: helpers.uniq("12/ABC(N)") }, authorization: helpers.verificationAuthorization() })
       .expect(201);
 
     const team = await request(app).get("/team").set("Authorization", `Bearer ${token}`);

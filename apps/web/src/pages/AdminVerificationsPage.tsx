@@ -15,7 +15,6 @@ import {
   Alert,
   Box,
   Button,
-  Card,
   CardContent,
   Chip,
   Dialog,
@@ -45,7 +44,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import { apiErrorMessage } from "../i18n/apiError";
 import { useAuth } from "../auth/AuthContext";
-import { EmptyState, PageHeader, ScrollableTable, StatCard, StatusChip } from "../components/ui";
+import { BentoStatCard, EmptyState, GlassCard, PageHeader, ScrollableTable, StatusChip } from "../components/ui";
 import { formatCalendarDate, formatDateTime } from "../lib/date";
 
 interface QueueItem {
@@ -94,6 +93,21 @@ interface VerificationContext {
     isSameCompany: boolean;
   }[];
   publishedReports: { categoryName: string; status: string; createdAt: string }[];
+  sources: {
+    sourceCompany: string;
+    contactName: string;
+    contactMethod: string;
+    response: string;
+    employmentStartDate: string | null;
+    employmentEndDate: string | null;
+    evidenceReference: string | null;
+    verifiedAt: string;
+    reviewerName: string;
+  }[];
+  consent: {
+    isLegacy: boolean;
+    confirmedAt: string | null;
+  };
 }
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -130,6 +144,14 @@ export function AdminVerificationsPage() {
   const [note, setNote] = useState("");
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
+  const [sourceCompany, setSourceCompany] = useState("");
+  const [sourceContact, setSourceContact] = useState("");
+  const [sourceDetails, setSourceDetails] = useState("");
+  const [sourceMethod, setSourceMethod] = useState("phone");
+  const [sourceResponse, setSourceResponse] = useState("employment_confirmed");
+  const [sourceStartDate, setSourceStartDate] = useState("");
+  const [sourceEndDate, setSourceEndDate] = useState("");
+  const [sourceEvidence, setSourceEvidence] = useState("");
 
   const load = useCallback(async () => {
     setError(null);
@@ -177,6 +199,14 @@ export function AdminVerificationsPage() {
     setNote(v.reviewerNote ?? "");
     setQuestion("");
     setAsking(false);
+    setSourceCompany("");
+    setSourceContact("");
+    setSourceDetails("");
+    setSourceMethod("phone");
+    setSourceResponse("employment_confirmed");
+    setSourceStartDate("");
+    setSourceEndDate("");
+    setSourceEvidence("");
     try {
       setContext(await api<VerificationContext>(`/admin/verifications/${v.id}/context`));
     } catch (err) {
@@ -198,7 +228,20 @@ export function AdminVerificationsPage() {
       }
       await api(`/admin/verifications/${deciding.id}/decision`, {
         method: "POST",
-        body: { status: next, result: result || undefined },
+        body: {
+          status: next,
+          result: result || undefined,
+          source: {
+            sourceCompany: sourceCompany.trim(),
+            contactName: sourceContact.trim(),
+            contactDetails: sourceDetails.trim() || undefined,
+            contactMethod: sourceMethod,
+            response: sourceResponse,
+            employmentStartDate: sourceStartDate || undefined,
+            employmentEndDate: sourceEndDate || undefined,
+            evidenceReference: sourceEvidence.trim() || undefined,
+          },
+        },
       });
       setDeciding(null);
       await load();
@@ -238,34 +281,34 @@ export function AdminVerificationsPage() {
       )}
 
       {stats && (
-        <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
-          <StatCard
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", lg: "repeat(4, minmax(0, 1fr))" }, gap: 2 }}>
+          <BentoStatCard
             label={t("queue.waiting")}
             value={stats.byStatus.pending?.count ?? 0}
             icon={<InboxIcon />}
           />
-          <StatCard
+          <BentoStatCard
             label={t("queue.assignedToMe")}
             value={stats.mine}
             icon={<AssignmentIndIcon />}
             tone="#0E9384"
           />
-          <StatCard
+          <BentoStatCard
             label={t("queue.overdue")}
             value={stats.overdue}
             icon={<AccessTimeIcon />}
             tone={stats.overdue > 0 ? "#B42318" : "#475467"}
           />
-          <StatCard
+          <BentoStatCard
             label={t("queue.medianTurnaround")}
             value={median === null || median === undefined ? "—" : age(median, t)}
             icon={<SpeedIcon />}
             tone="#6941C6"
           />
-        </Stack>
+        </Box>
       )}
 
-      <Card>
+      <GlassCard>
         <CardContent>
           <Stack
             direction={{ xs: "column", md: "row" }}
@@ -428,7 +471,7 @@ export function AdminVerificationsPage() {
             </ScrollableTable>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
 
       {/* --- Review + decision --- */}
       <Dialog open={deciding !== null} onClose={() => setDeciding(null)} fullWidth maxWidth="sm">
@@ -469,6 +512,25 @@ export function AdminVerificationsPage() {
                     ? t("admin.firstSeen", { date: formatDateTime(context.subject.knownSince) })
                     : t("admin.notPreviouslySeen")}
                 </Typography>
+
+                <Alert severity="info" icon={false}>
+                  <Typography variant="caption" fontWeight={700} display="block">
+                    {t("admin.consentTitle")}
+                  </Typography>
+                  {context.consent.isLegacy ? (
+                    <Typography variant="body2">{t("admin.consentLegacy")}</Typography>
+                  ) : (
+                    <>
+                      {context.consent.confirmedAt && (
+                        <Typography variant="caption" color="text.secondary">
+                          {t("admin.consentConfirmed", {
+                            date: formatDateTime(context.consent.confirmedAt),
+                          })}
+                        </Typography>
+                      )}
+                    </>
+                  )}
+                </Alert>
 
                 <Typography variant="body2">
                   {context.priorChecks.length === 0
@@ -514,6 +576,20 @@ export function AdminVerificationsPage() {
                     ))}
                   </Alert>
                 )}
+                {context.sources.length > 0 && (
+                  <Alert severity="success" icon={false}>
+                    <Typography variant="caption" fontWeight={700} display="block">
+                      {t("admin.sourceHistory")}
+                    </Typography>
+                    {context.sources.map((source, i) => (
+                      <Typography key={i} variant="body2">
+                        {source.sourceCompany} · {source.contactName} · {t(`admin.sourceResponses.${source.response}`, { defaultValue: source.response })}
+                        <br />
+                        <Typography component="span" variant="caption">{t("admin.sourceRecordedBy", { reviewer: source.reviewerName, date: formatDateTime(source.verifiedAt) })}</Typography>
+                      </Typography>
+                    ))}
+                  </Alert>
+                )}
               </Stack>
             )}
 
@@ -544,6 +620,32 @@ export function AdminVerificationsPage() {
               />
             ) : (
               <>
+                <Typography variant="subtitle2">{t("admin.sourceRecordTitle")}</Typography>
+                <Alert severity="info" icon={false}>{t("admin.sourceRecordHint")}</Alert>
+                <TextField label={t("admin.sourceCompany")} value={sourceCompany} onChange={(e) => setSourceCompany(e.target.value)} required fullWidth />
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <TextField label={t("admin.sourceContact")} value={sourceContact} onChange={(e) => setSourceContact(e.target.value)} required fullWidth />
+                  <TextField select label={t("admin.sourceMethod")} value={sourceMethod} onChange={(e) => setSourceMethod(e.target.value)} fullWidth>
+                    <MenuItem value="phone">{t("admin.sourceMethods.phone")}</MenuItem>
+                    <MenuItem value="email">{t("admin.sourceMethods.email")}</MenuItem>
+                    <MenuItem value="letter">{t("admin.sourceMethods.letter")}</MenuItem>
+                    <MenuItem value="portal">{t("admin.sourceMethods.portal")}</MenuItem>
+                    <MenuItem value="in_person">{t("admin.sourceMethods.in_person")}</MenuItem>
+                    <MenuItem value="document">{t("admin.sourceMethods.document")}</MenuItem>
+                    <MenuItem value="other">{t("admin.sourceMethods.other")}</MenuItem>
+                  </TextField>
+                </Stack>
+                <TextField label={t("admin.sourceContactDetails")} value={sourceDetails} onChange={(e) => setSourceDetails(e.target.value)} helperText={t("admin.sourceContactDetailsHint")} fullWidth />
+                <TextField select label={t("admin.sourceResponse")} value={sourceResponse} onChange={(e) => setSourceResponse(e.target.value)} fullWidth>
+                  <MenuItem value="employment_confirmed">{t("admin.sourceResponses.employment_confirmed")}</MenuItem>
+                  <MenuItem value="no_record">{t("admin.sourceResponses.no_record")}</MenuItem>
+                  <MenuItem value="unable_to_confirm">{t("admin.sourceResponses.unable_to_confirm")}</MenuItem>
+                </TextField>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <TextField label={t("admin.sourceStartDate")} type="date" value={sourceStartDate} onChange={(e) => setSourceStartDate(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
+                  <TextField label={t("admin.sourceEndDate")} type="date" value={sourceEndDate} onChange={(e) => setSourceEndDate(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
+                </Stack>
+                <TextField label={t("admin.sourceEvidenceReference")} value={sourceEvidence} onChange={(e) => setSourceEvidence(e.target.value)} helperText={t("admin.sourceEvidenceReferenceHint")} fullWidth />
                 <Typography variant="body2" color="text.secondary">
                   {t("admin.recordOutcome")}
                 </Typography>
@@ -591,7 +693,7 @@ export function AdminVerificationsPage() {
               <Button
                 color="inherit"
                 variant="outlined"
-                disabled={busy}
+                disabled={busy || !sourceCompany.trim() || !sourceContact.trim() || sourceResponse === "employment_confirmed"}
                 onClick={() => void decide("not_found")}
               >
                 {t("admin.noRecordFound")}
@@ -599,7 +701,7 @@ export function AdminVerificationsPage() {
               <Button
                 variant="contained"
                 color="success"
-                disabled={busy}
+                disabled={busy || !sourceCompany.trim() || !sourceContact.trim() || sourceResponse !== "employment_confirmed"}
                 onClick={() => void decide("completed")}
               >
                 {t("admin.recordConfirmed")}

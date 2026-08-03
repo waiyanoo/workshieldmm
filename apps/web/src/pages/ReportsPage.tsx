@@ -3,16 +3,16 @@ import {
   Alert,
   Box,
   Button,
-  Card,
   CardContent,
+  Checkbox,
   Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   MenuItem,
   Stack,
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -27,7 +27,7 @@ import DescriptionIcon from "@mui/icons-material/Description";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { api, uploadFile } from "../api/client";
-import { EmptyState, PageHeader, StatusChip } from "../components/ui";
+import { EmptyState, GlassCard, PageHeader, ScrollableTable, StatusChip } from "../components/ui";
 import { EMPTY_NRC, NrcInput, nrcToString, type NrcValue } from "../components/NrcInput";
 import { formatCalendarDate } from "../lib/date";
 import { useTranslation } from "react-i18next";
@@ -95,12 +95,15 @@ export function ReportsPage() {
   const [categoryKey, setCategoryKey] = useState("");
   const [narrative, setNarrative] = useState("");
   const [saving, setSaving] = useState(false);
+  const [submittingReportId, setSubmittingReportId] = useState<string | null>(null);
+  const [submissionDeclarationAccepted, setSubmissionDeclarationAccepted] = useState(false);
 
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
     [categories]
   );
   const selectedCategory = categories.find((c) => c.key === categoryKey);
+  const reportBeingSubmitted = reports.find((report) => report.id === submittingReportId) ?? null;
 
   async function load() {
     try {
@@ -169,7 +172,10 @@ export function ReportsPage() {
     setError(null);
     setNotice(null);
     try {
-      await api(`/reports/${reportId}/submit`, { method: "POST" });
+      await api(`/reports/${reportId}/submit`, {
+        method: "POST",
+        body: { declaration: { accepted: true, version: "2026-08" } },
+      });
       setNotice(t("reports.submitted"));
       await load();
     } catch (err) {
@@ -228,7 +234,7 @@ export function ReportsPage() {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
 
-      <Card>
+      <GlassCard>
         <CardContent>
           {reports.length === 0 ? (
             <EmptyState
@@ -236,7 +242,7 @@ export function ReportsPage() {
               hint={t("reports.emptyHint")}
             />
           ) : (
-            <Table size="small">
+            <ScrollableTable minWidth={860}>
               <TableHead>
                 <TableRow>
                   <TableCell>{t("reports.reference")}</TableCell>
@@ -308,7 +314,10 @@ export function ReportsPage() {
                             variant="contained"
                             startIcon={<SendIcon />}
                             disabled={busyId === r.id}
-                            onClick={() => onSubmit(r.id)}
+                            onClick={() => {
+                              setSubmittingReportId(r.id);
+                              setSubmissionDeclarationAccepted(false);
+                            }}
                           >
                             {t("common.submit")}
                           </Button>
@@ -352,10 +361,10 @@ export function ReportsPage() {
                   </Fragment>
                 ))}
               </TableBody>
-            </Table>
+            </ScrollableTable>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
 
       {/* What was filed, and the option to retract it. */}
       <Dialog open={detail !== null} onClose={() => setDetail(null)} fullWidth maxWidth="sm">
@@ -476,6 +485,40 @@ export function ReportsPage() {
           ) : (
             <Button onClick={() => setDetail(null)}>{t("common.close")}</Button>
           )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={submittingReportId !== null} onClose={() => setSubmittingReportId(null)} fullWidth maxWidth="sm">
+        <DialogTitle>{t("reports.submitDeclarationTitle")}</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2} mt={1}>
+            <Alert severity="warning">{t("reports.submitDeclarationWarning")}</Alert>
+            {reportBeingSubmitted && <Alert severity="info" icon={false}>
+              <Typography variant="caption" fontWeight={700} display="block">{t("reports.submissionReview")}</Typography>
+              <Typography variant="body2">{t("reports.reference")}: {reportBeingSubmitted.id.slice(0, 8)}</Typography>
+              <Typography variant="body2">{t("reports.category")}: {categoryById.get(reportBeingSubmitted.categoryId)?.name ?? "—"}</Typography>
+              <Typography variant="body2">{t("reports.evidence")}: {t("reports.fileCount", { count: reportBeingSubmitted.evidence.length })}</Typography>
+              {reportBeingSubmitted.evidence.length === 0 && <Typography variant="body2" color="error.main">{t("reports.evidenceRequiredBeforeSubmit")}</Typography>}
+            </Alert>}
+            <FormControlLabel
+              control={<Checkbox checked={submissionDeclarationAccepted} onChange={(e) => setSubmissionDeclarationAccepted(e.target.checked)} />}
+              label={<Typography variant="body2">{t("reports.submitDeclaration")}</Typography>}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setSubmittingReportId(null)} disabled={busyId !== null}>{t("common.cancel")}</Button>
+          <Button
+            variant="contained"
+            disabled={!submissionDeclarationAccepted || busyId !== null || !reportBeingSubmitted || reportBeingSubmitted.evidence.length === 0}
+            onClick={() => {
+              if (!submittingReportId) return;
+              void onSubmit(submittingReportId);
+              setSubmittingReportId(null);
+            }}
+          >
+            {t("reports.confirmSubmit")}
+          </Button>
         </DialogActions>
       </Dialog>
 

@@ -17,7 +17,7 @@ process.env.FEATURE_TIER_B_ENABLED = "false";
 const { createApp } = await import("../app");
 const { pool } = await import("../db/pool");
 const { redis } = await import("../lib/redis");
-const { companyRegistrationPayload, createSuperAdmin, approveCompanyDocuments } = await import(
+const { companyRegistrationPayload, createSuperAdmin, approveCompanyDocuments, verificationAuthorization, verificationSource } = await import(
   "../test/helpers"
 );
 
@@ -47,7 +47,7 @@ describe("Tier A vertical slice", () => {
     const blocked = await request(app)
       .post("/verifications")
       .set("Authorization", `Bearer ${companyToken}`)
-      .send({ subject: { fullName: "Jane Doe", nationalId: "12/ABC(N)123456" } });
+      .send({ subject: { fullName: "Jane Doe", nationalId: "12/ABC(N)123456" }, authorization: verificationAuthorization() });
     expect(blocked.status).toBe(403);
 
     // 3. Super Admin login requires MFA.
@@ -107,7 +107,7 @@ describe("Tier A vertical slice", () => {
     const check = await request(app)
       .post("/verifications")
       .set("Authorization", `Bearer ${companyToken}`)
-      .send({ subject: { fullName: "Jane Doe", nationalId: "12/ABC(N)123456" } });
+      .send({ subject: { fullName: "Jane Doe", nationalId: "12/ABC(N)123456" }, authorization: verificationAuthorization() });
     expect(check.status).toBe(201);
     expect(check.body.status).toBe("pending");
     const verificationId: string = check.body.id;
@@ -138,7 +138,7 @@ describe("Tier A vertical slice", () => {
     const decide = await request(app)
       .post(`/admin/verifications/${verificationId}/decision`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ status: "completed", result: "Employment dates confirmed: 2021-03 to 2024-11" });
+      .send({ status: "completed", result: "Employment dates confirmed: 2021-03 to 2024-11", source: verificationSource() });
     expect(decide.status).toBe(200);
     expect(decide.body.status).toBe("completed");
 
@@ -146,7 +146,7 @@ describe("Tier A vertical slice", () => {
     const again = await request(app)
       .post(`/admin/verifications/${verificationId}/decision`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ status: "not_found" });
+      .send({ status: "not_found", source: verificationSource("no_record") });
     expect(again.status).toBe(409);
 
     // 6e. The employer sees the outcome.

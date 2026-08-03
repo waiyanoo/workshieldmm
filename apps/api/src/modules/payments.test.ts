@@ -195,13 +195,21 @@ describe("credit purchase", () => {
     const adminToken = await loginPlatform(await helpers.createSuperAdmin());
     const { companyId, token } = await provisionCompany(adminToken);
 
-    // Buying a plan is the same QR flow, quoting the monthly fee.
+    // Buying a plan is the same QR flow, quoting the monthly fee. Read the fee
+    // from the pricing screen rather than hard-coding it, so a promotion (0026)
+    // reprices this test the same way it reprices the buyer.
+    const pricing = await request(app)
+      .get("/payments/options")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    const starter = pricing.body.plans.find((p: { plan: string }) => p.plan === "starter");
+
     const intent = await request(app)
       .post("/payments/subscriptions")
       .set("Authorization", `Bearer ${token}`)
       .send({ plan: "starter", billingCycle: "monthly", provider: "kbzpay" });
     expect(intent.status).toBe(201);
-    expect(intent.body.amountMmk).toBe(49900);
+    expect(intent.body.amountMmk).toBe(starter.monthlyMmk);
     expect(intent.body.kind).toBe("subscription");
 
     await request(app)

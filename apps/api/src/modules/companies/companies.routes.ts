@@ -45,6 +45,7 @@ companiesRouter.post(
     const result = await registerCompany({
       company: req.body.company,
       admin: req.body.admin,
+      declaration: req.body.declaration,
       ip: req.ip,
       userAgent: req.headers["user-agent"],
     });

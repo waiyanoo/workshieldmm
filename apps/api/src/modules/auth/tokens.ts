@@ -16,6 +16,24 @@ export interface AccessClaims {
   userType: "company" | "platform";
   role: Role;
   companyId?: string;
+  /**
+   * The holder is on an admin-issued temporary password and must replace it.
+   *
+   * Carried in the token rather than read from the database on every request:
+   * the claim can only go stale in the SAFE direction. Changing the password
+   * mints fresh tokens immediately, so nobody is left locked out — while a
+   * token minted before the change keeps its restriction until it expires,
+   * which is exactly what we want from a credential the admin also saw.
+   */
+  mustChangePassword?: true;
+  /**
+   * The account holds a role that requires MFA and has not enrolled yet.
+   *
+   * Refusing the login outright was the obvious thing and it deadlocked:
+   * enrolment needs a session, and there was no way to get one. So the session
+   * is issued but can reach nothing except setting up the second factor.
+   */
+  mfaSetupRequired?: true;
 }
 
 export function signAccessToken(claims: AccessClaims): string {

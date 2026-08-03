@@ -16,6 +16,18 @@ export interface Session {
   accessToken: string;
   refreshToken: string;
   user: AuthUser;
+  /**
+   * The account is on an administrator-issued temporary password. The API
+   * refuses every route but change-password until it is replaced; this is only
+   * so the client can route there rather than showing a wall of 403s.
+   */
+  mustChangePassword?: boolean;
+  /**
+   * The role requires a second factor and none is enrolled. Only the MFA setup
+   * routes are open until it is — again, the API enforces it; this is so the
+   * client can route there instead of showing a wall of 403s.
+   */
+  mfaSetupRequired?: boolean;
 }
 
 const KEY = "hyper.auth";
@@ -48,6 +60,32 @@ export function userFromToken(accessToken: string): AuthUser {
     role: payload.role,
     userType: payload.userType,
     companyId: payload.companyId ?? null,
+  };
+}
+
+/**
+ * Build a session from a token pair.
+ *
+ * The restrictions are read from the access token rather than passed in
+ * alongside it. They are derived server-side (MFA enrolment is "role requires
+ * it and none is enrolled", not a column), so the token is the only thing that
+ * always knows the truth — and any path that rebuilds a session from a bare
+ * pair, refresh included, would otherwise drop them and quietly un-restrict the
+ * client while the API kept enforcing.
+ */
+export function sessionFromTokens(accessToken: string, refreshToken: string): Session {
+  let claims: { mustChangePassword?: boolean; mfaSetupRequired?: boolean } = {};
+  try {
+    claims = JSON.parse(atob(accessToken.split(".")[1] ?? ""));
+  } catch {
+    /* an unreadable token fails on the next request anyway */
+  }
+  return {
+    accessToken,
+    refreshToken,
+    user: userFromToken(accessToken),
+    mustChangePassword: claims.mustChangePassword === true,
+    mfaSetupRequired: claims.mfaSetupRequired === true,
   };
 }
 
@@ -127,10 +165,6 @@ async function tryRefresh(): Promise<boolean> {
     return false;
   }
   const data = (await res.json()) as { accessToken: string; refreshToken: string };
-  setSession({
-    accessToken: data.accessToken,
-    refreshToken: data.refreshToken,
-    user: userFromToken(data.accessToken),
-  });
+  setSession(sessionFromTokens(data.accessToken, data.refreshToken));
   return true;
 }

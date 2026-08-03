@@ -14,6 +14,10 @@ export const registerCompanySchema = z.object({
     // reading one off an image. (0024)
     nationalId: z.string().min(3).max(50),
   }),
+  declaration: z.object({
+    accepted: z.literal(true),
+    version: z.string().trim().min(1).max(50),
+  }),
 });
 
 export const verifyCompanySchema = z.object({

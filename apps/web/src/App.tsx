@@ -21,6 +21,12 @@ import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 import { ReceiptsPage } from "./pages/ReceiptsPage";
 import { AdminCompanyDetailPage } from "./pages/AdminCompanyDetailPage";
 import { AdminStatsPage } from "./pages/AdminStatsPage";
+import { AdminAccountsPage } from "./pages/AdminAccountsPage";
+import { AdminPromotionsPage } from "./pages/AdminPromotionsPage";
+import { AdminReportCategoriesPage } from "./pages/AdminReportCategoriesPage";
+import { AdminOperationsPage } from "./pages/AdminOperationsPage";
+import { ChangePasswordPage } from "./pages/ChangePasswordPage";
+import { MfaSetupPage } from "./pages/MfaSetupPage";
 
 const COMPANY = ["company_admin", "company_user"];
 const REVIEWERS = ["super_admin", "admin_reviewer"];
@@ -53,6 +59,10 @@ export function App() {
       <Route path="/register" element={<RegisterPage />} />
       {/* Public: the invitee has no account until they accept. */}
       <Route path="/invite/:token" element={<AcceptInvitePage />} />
+      {/* Outside ProtectedRoute: a locked-out account has to be able to reach
+          the one screen that unlocks it. */}
+      <Route path="/change-password" element={<ChangePasswordPage />} />
+      <Route path="/mfa-setup" element={<MfaSetupPage />} />
 
 
       {/* The dashboard is the one company page that works before verification:
@@ -74,7 +84,17 @@ export function App() {
       <Route path="/admin/access-requests" element={page(<AdminAccessRequestsPage />, REVIEWERS)} />
 
       <Route path="/admin/verifications" element={page(<AdminVerificationsPage />, REVIEWERS)} />
+      <Route path="/admin/operations" element={page(<AdminOperationsPage />, REVIEWERS)} />
       <Route path="/admin/stats" element={page(<AdminStatsPage />, ["super_admin"])} />
+      <Route path="/admin/accounts" element={page(<AdminAccountsPage />, ["super_admin"])} />
+      <Route
+        path="/admin/promotions"
+        element={page(<AdminPromotionsPage />, ["super_admin"])}
+      />
+      <Route
+        path="/admin/report-categories"
+        element={page(<AdminReportCategoriesPage />, ["super_admin"])}
+      />
       <Route path="/admin/companies" element={page(<AdminCompaniesPage />, ["super_admin"])} />
       <Route
         path="/admin/companies/:id"

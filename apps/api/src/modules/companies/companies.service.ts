@@ -53,6 +53,7 @@ function ctxForUser(user: AuthUser): AppContext {
 export interface RegisterCompanyInput {
   company: { legalName: string; registrationNumber: string };
   admin: { fullName: string; email: string; password: string; nationalId: string };
+  declaration: { accepted: true; version: string };
   ip?: string | null;
   userAgent?: string | null;
 }
@@ -115,6 +116,16 @@ export async function registerCompany(input: RegisterCompanyInput) {
       [company.id]
     );
 
+    // The first administrator accepts the platform registration declaration
+    // for this company. The row is deliberately immutable rather than a flag
+    // on the company, so the acceptance stays independently auditable.
+    await client.query(
+      `INSERT INTO company_declarations
+         (company_id, company_user_id, kind, declaration_version)
+       VALUES ($1, $2, 'registration', $3)`,
+      [company.id, userId, input.declaration.version]
+    );
+
     // Welcome credits are NOT granted here. A company that has only filled in a
     // registration form cannot run a check yet, so a balance on the dashboard
     // is an offer it cannot take up — and it starts the one-month expiry clock
@@ -134,6 +145,7 @@ export async function registerCompany(input: RegisterCompanyInput) {
       action: "company.register",
       resourceType: "company",
       resourceId: company.id,
+      metadata: { registrationDeclarationVersion: input.declaration.version },
       ipAddress: input.ip ?? null,
     });
 

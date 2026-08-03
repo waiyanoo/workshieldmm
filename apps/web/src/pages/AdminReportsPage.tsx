@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import {
   Alert,
+  Box,
   Button,
-  Card,
   CardContent,
   Dialog,
   DialogActions,
@@ -18,9 +18,10 @@ import {
   Typography,
 } from "@mui/material";
 import DownloadIcon from "@mui/icons-material/Download";
+import DescriptionIcon from "@mui/icons-material/Description";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../api/client";
-import { EmptyState, PageHeader, ScrollableTable, StatusChip } from "../components/ui";
+import { BentoStatCard, EmptyState, GlassCard, PageHeader, ScrollableTable, StatusChip } from "../components/ui";
 import { formatCalendarDate } from "../lib/date";
 
 interface QueueItem {
@@ -117,8 +118,11 @@ export function AdminReportsPage() {
       />
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "minmax(0, 260px)" }, gap: 2, mb: 2 }}>
+        <BentoStatCard label={t("admin.reportReviewTitle")} value={items.length} icon={<DescriptionIcon />} tone="#9F1AB1" />
+      </Box>
 
-      <Card>
+      <GlassCard>
         <CardContent>
           {items.length === 0 ? (
             <EmptyState title={t("admin.noReportsToReview")} />
@@ -161,7 +165,7 @@ export function AdminReportsPage() {
             </ScrollableTable>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
 
       <Dialog open={detail !== null} onClose={() => setDetail(null)} fullWidth maxWidth="sm">
         <DialogTitle>

@@ -10,7 +10,7 @@
  */
 import { withContext, type AppContext } from "../../db/pool";
 import { writeAudit } from "../../lib/audit";
-import { conflict, notFound } from "../../lib/errors";
+import { badRequest, conflict, notFound } from "../../lib/errors";
 import { notify } from "../notifications/notifications.service";
 import type { AuthUser } from "../../types/auth";
 
@@ -81,8 +81,14 @@ export async function listVerificationsForReview(admin: AuthUser, status: string
  */
 export async function getVerificationContext(admin: AuthUser, verificationId: string) {
   return withContext(ctxForUser(admin), async (client) => {
-    const req = await client.query<{ subject_id: string; company_id: string }>(
-      `SELECT subject_id, company_id FROM verification_requests WHERE id = $1`,
+    const req = await client.query<{
+      subject_id: string;
+      company_id: string;
+      authorization_basis: string;
+      authorization_confirmed_at: string | null;
+    }>(
+      `SELECT subject_id, company_id, authorization_basis, authorization_confirmed_at
+         FROM verification_requests WHERE id = $1`,
       [verificationId]
     );
     if (!req.rows[0]) throw notFound("Verification not found");
@@ -129,6 +135,27 @@ export async function getVerificationContext(admin: AuthUser, verificationId: st
       [subjectId]
     );
 
+    const sources = await client.query<{
+      source_company: string;
+      contact_name: string;
+      contact_method: string;
+      response: string;
+      employment_start_date: string | null;
+      employment_end_date: string | null;
+      evidence_reference: string | null;
+      verified_at: string;
+      reviewer_name: string;
+    }>(
+      `SELECT vs.source_company, vs.contact_name, vs.contact_method, vs.response,
+              vs.employment_start_date, vs.employment_end_date, vs.evidence_reference,
+              vs.verified_at, p.full_name AS reviewer_name
+         FROM verification_sources vs
+         JOIN platform_users p ON p.id = vs.reviewer_id
+        WHERE vs.verification_id = $1
+        ORDER BY vs.verified_at DESC`,
+      [verificationId]
+    );
+
     return {
       subject: {
         fullName: subject.rows[0]?.full_name ?? null,
@@ -149,6 +176,21 @@ export async function getVerificationContext(admin: AuthUser, verificationId: st
         status: r.status,
         createdAt: r.created_at,
       })),
+      sources: sources.rows.map((s) => ({
+        sourceCompany: s.source_company,
+        contactName: s.contact_name,
+        contactMethod: s.contact_method,
+        response: s.response,
+        employmentStartDate: s.employment_start_date,
+        employmentEndDate: s.employment_end_date,
+        evidenceReference: s.evidence_reference,
+        verifiedAt: s.verified_at,
+        reviewerName: s.reviewer_name,
+      })),
+      consent: {
+        isLegacy: req.rows[0].authorization_basis === "legacy_no_record",
+        confirmedAt: req.rows[0].authorization_confirmed_at,
+      },
     };
   });
 }
@@ -161,10 +203,31 @@ const DEFAULT_RESULTS: Record<string, string> = {
 export async function decideVerification(
   admin: AuthUser,
   verificationId: string,
-  decision: { status: "completed" | "not_found"; result?: string },
+  decision: {
+    status: "completed" | "not_found";
+    result?: string;
+    source: {
+      sourceCompany: string;
+      contactName: string;
+      contactDetails?: string;
+      contactMethod: "phone" | "email" | "letter" | "portal" | "in_person" | "document" | "other";
+      response: "employment_confirmed" | "no_record" | "unable_to_confirm";
+      employmentStartDate?: string;
+      employmentEndDate?: string;
+      evidenceReference?: string;
+      verifiedAt?: string;
+    };
+  },
   ip?: string | null
 ) {
   const result = decision.result?.trim() || DEFAULT_RESULTS[decision.status]!;
+
+  if (
+    (decision.status === "completed" && decision.source.response !== "employment_confirmed") ||
+    (decision.status === "not_found" && decision.source.response === "employment_confirmed")
+  ) {
+    throw badRequest("The source response must match the verification outcome");
+  }
 
   return withContext(ctxForUser(admin), async (client) => {
     const updated = await client.query<ReviewRow>(
@@ -189,6 +252,27 @@ export async function decideVerification(
       throw conflict(`Verification is already ${exists.rows[0].status}`);
     }
 
+    await client.query(
+      `INSERT INTO verification_sources
+         (verification_id, reviewer_id, source_company, contact_name, contact_details,
+          contact_method, response, employment_start_date, employment_end_date,
+          evidence_reference, verified_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11::timestamptz, now()))`,
+      [
+        verificationId,
+        admin.id,
+        decision.source.sourceCompany,
+        decision.source.contactName,
+        decision.source.contactDetails?.trim() || null,
+        decision.source.contactMethod,
+        decision.source.response,
+        decision.source.employmentStartDate ?? null,
+        decision.source.employmentEndDate ?? null,
+        decision.source.evidenceReference?.trim() || null,
+        decision.source.verifiedAt ?? null,
+      ]
+    );
+
     await notify(client, {
       companyId: updated.rows[0].company_id,
       kind: "verification.completed",
@@ -203,7 +287,7 @@ export async function decideVerification(
       action: "verification.decide",
       resourceType: "verification_request",
       resourceId: verificationId,
-      metadata: { status: decision.status },
+      metadata: { status: decision.status, sourceMethod: decision.source.contactMethod },
       ipAddress: ip ?? null,
     });
 

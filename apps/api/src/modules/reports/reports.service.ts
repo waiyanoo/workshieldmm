@@ -234,7 +234,12 @@ export async function attachEvidence(
 }
 
 /** Submit for review. Evidence is mandatory (concept §3.2 step 2). */
-export async function submitReport(user: AuthUser, reportId: string, ip?: string | null) {
+export async function submitReport(
+  user: AuthUser,
+  reportId: string,
+  declaration: { accepted: true; version: string },
+  ip?: string | null
+) {
   return withContext(ctxForUser(user), async (client) => {
     const evidence = await client.query(`SELECT 1 FROM evidence_files WHERE report_id = $1`, [
       reportId,
@@ -258,12 +263,20 @@ export async function submitReport(user: AuthUser, reportId: string, ip?: string
       throw conflict(`Report is already ${exists.rows[0].status}`);
     }
 
+    await client.query(
+      `INSERT INTO company_declarations
+         (company_id, company_user_id, conduct_report_id, kind, declaration_version)
+       VALUES ($1, $2, $3, 'report_submission', $4)`,
+      [user.companyId, user.id, reportId, declaration.version]
+    );
+
     await writeAudit(client, {
       actorId: user.id,
       actorType: "user",
       action: "report.submit",
       resourceType: "conduct_report",
       resourceId: reportId,
+      metadata: { submissionDeclarationVersion: declaration.version },
       ipAddress: ip ?? null,
     });
     return publicReport(res.rows[0]);

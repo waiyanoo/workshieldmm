@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from "react";
-import { Alert, Button, Card, CardContent, Dialog, DialogContent, DialogTitle, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
+import { Alert, Box, Button, Card, CardContent, Dialog, DialogContent, DialogTitle, Stack, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
-import { EmptyState, PageHeader, StatusChip } from "../components/ui";
+import { EmptyState, PageHeader, ScrollableTable, StatusChip } from "../components/ui";
 import { EMPTY_NRC, NrcInput, nrcToString, type NrcValue } from "../components/NrcInput";
 import { apiErrorMessage } from "../i18n/apiError";
 
@@ -41,12 +41,19 @@ export function AccessSearchPage() {
     <PageHeader title={t("access.title")} subtitle={t("access.subtitle", { cost: 1, view: 1 })} />
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
     <Card sx={{ mb: 3 }}><CardContent><form onSubmit={onSearch}><Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-      <NrcInput value={nrc} onChange={setNrc} required />
+      {/* The NRC fields sit in a row next to the button here, so they have to
+          claim the leftover width explicitly. Left to itself the box is sized
+          by its content and then shrunk to make room for the button, which
+          pushed the 6-digit field onto a second line. `minWidth: 0` keeps the
+          wrapping available on a genuinely narrow screen. */}
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <NrcInput value={nrc} onChange={setNrc} required />
+      </Box>
       <Button type="submit" variant="contained" startIcon={<SearchIcon />} disabled={busy} sx={{ alignSelf: { sm: "flex-start" }, whiteSpace: "nowrap" }}>{busy ? t("access.searching") : t("access.search")}</Button>
     </Stack></form></CardContent></Card>
-    {items !== null && <Card><CardContent>{items.length === 0 ? <EmptyState title={t("access.noResults")} hint={t("access.noResultsHint")} /> : <Table size="small"><TableHead><TableRow><TableCell>{t("access.report")}</TableCell><TableCell>{t("access.accessStatus")}</TableCell><TableCell align="right">{t("common.actions")}</TableCell></TableRow></TableHead><TableBody>
+    {items !== null && <Card><CardContent>{items.length === 0 ? <EmptyState title={t("access.noResults")} hint={t("access.noResultsHint")} /> : <ScrollableTable minWidth={520}><TableHead><TableRow><TableCell>{t("access.report")}</TableCell><TableCell>{t("access.accessStatus")}</TableCell><TableCell align="right">{t("common.actions")}</TableCell></TableRow></TableHead><TableBody>
       {items.map((i) => <TableRow key={i.accessRequestId} hover><TableCell sx={{ fontFamily: "monospace" }}>{i.reportId.slice(0, 8)}</TableCell><TableCell><StatusChip status={i.status} /></TableCell><TableCell align="right">{i.status === "approved" ? <Button size="small" variant="contained" onClick={() => onView(i.reportId)}>{t("access.readReport")}</Button> : <Typography variant="caption" color="text.secondary">{t("access.awaitingApproval")}</Typography>}</TableCell></TableRow>)}
-    </TableBody></Table>}</CardContent></Card>}
+    </TableBody></ScrollableTable>}</CardContent></Card>}
     <Dialog open={viewing !== null} onClose={() => setViewing(null)} fullWidth maxWidth="sm"><DialogTitle>{t("access.conductReport")}: {viewing?.categoryName}</DialogTitle><DialogContent>{viewing && <Stack spacing={1.5} mt={0.5}>
       <Typography variant="body2"><b>{t("access.submittedBy")}</b> {viewing.submittedBy}</Typography>
       <Typography variant="body2"><b>{t("access.filed")}</b> {new Date(viewing.createdAt).toLocaleDateString()} · <b>{t("access.expires")}</b> {viewing.expiryDate ? new Date(viewing.expiryDate).toLocaleDateString() : "—"}</Typography>

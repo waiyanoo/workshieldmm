@@ -21,6 +21,7 @@ verificationsRouter.post(
   asyncHandler(async (req, res) => {
     const result = await createVerification(req.user!, {
       subject: req.body.subject,
+      authorization: req.body.authorization,
       ip: req.ip,
     });
     res.status(201).json(result);

@@ -8,8 +8,19 @@
 import type { RequestHandler } from "express";
 import type { Role } from "@hyper/shared";
 import type { AppContext } from "../db/pool";
-import { forbidden, unauthorized } from "../lib/errors";
+import {
+  forbidden,
+  mfaSetupRequired,
+  passwordChangeRequired,
+  unauthorized,
+} from "../lib/errors";
 import { verifyAccessToken } from "../modules/auth/tokens";
+
+/** The only routes reachable while a temporary password is outstanding. */
+const PASSWORD_CHANGE_PATHS = new Set(["/change-password", "/logout"]);
+
+/** The only routes reachable while a required second factor is not enrolled. */
+const MFA_SETUP_PATHS = new Set(["/mfa/setup", "/mfa/verify", "/logout"]);
 
 export const requireAuth: RequestHandler = (req, _res, next) => {
   const header = req.headers.authorization;
@@ -24,7 +35,26 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
       userType: claims.userType,
       role: claims.role,
       companyId: claims.companyId,
+      mustChangePassword: claims.mustChangePassword === true,
+      mfaSetupRequired: claims.mfaSetupRequired === true,
     };
+
+    // A temporary password issued by an administrator is good for exactly one
+    // thing: replacing itself. Enforced here rather than per-route, so a new
+    // endpoint cannot accidentally be reachable with a credential somebody
+    // else has also seen.
+    // One gate at a time, password first: a credential somebody else has seen
+    // is the more urgent of the two. Checking both together closed
+    // /change-password behind the MFA gate and deadlocked all over again.
+    if (claims.mustChangePassword) {
+      if (!PASSWORD_CHANGE_PATHS.has(req.path)) {
+        next(passwordChangeRequired());
+        return;
+      }
+    } else if (claims.mfaSetupRequired && !MFA_SETUP_PATHS.has(req.path)) {
+      next(mfaSetupRequired());
+      return;
+    }
     next();
   } catch {
     next(unauthorized("Invalid or expired token"));

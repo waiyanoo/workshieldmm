@@ -67,7 +67,7 @@ async function raiseCheck(companyToken: string, fullName: string) {
   const res = await request(app)
     .post("/verifications")
     .set("Authorization", `Bearer ${companyToken}`)
-    .send({ subject: { fullName, nationalId: helpers.uniq("12/ABC(N)") } });
+    .send({ subject: { fullName, nationalId: helpers.uniq("12/ABC(N)") }, authorization: helpers.verificationAuthorization() });
   expect(res.status).toBe(201);
   return res.body.id as string;
 }
@@ -193,7 +193,7 @@ describe("reviewer work queue", () => {
     await request(app)
       .post(`/admin/verifications/${decided}/decision`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ status: "completed" })
+      .send({ status: "completed", source: helpers.verificationSource() })
       .expect(200);
 
     const stats = await request(app)

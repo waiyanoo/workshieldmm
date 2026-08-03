@@ -23,6 +23,7 @@ import { presignGet, putObject } from "../../lib/storage";
 import type { AuthUser } from "../../types/auth";
 import { getBalance, grantCredits } from "../credits/credits.service";
 import { notify } from "../notifications/notifications.service";
+import { activePromotion, applyPromotion } from "./promotions";
 
 function ctxForUser(user: AuthUser): AppContext {
   return { userType: user.userType, userId: user.id, companyId: user.companyId };
@@ -65,6 +66,9 @@ async function nextReceiptNumber(client: PoolClient): Promise<string> {
 
 export async function listPurchaseOptions(user: AuthUser) {
   return withContext(ctxForUser(user), async (client) => {
+    // Quoted from the same function that charges, so the page and the checkout
+    // can never disagree about what something costs.
+    const promo = await activePromotion(client);
     const packages = await client.query(
       `SELECT key, name, credits, price_mmk FROM credit_packages
         WHERE active ORDER BY sort_order`
@@ -88,6 +92,9 @@ export async function listPurchaseOptions(user: AuthUser) {
     );
 
     return {
+      promotion: promo
+        ? { name: promo.name, percentOff: promo.percentOff, endsAt: promo.endsAt }
+        : null,
       currentPlan: period.rows[0]
         ? {
             plan: period.rows[0].plan,
@@ -95,23 +102,36 @@ export async function listPurchaseOptions(user: AuthUser) {
             endsAt: period.rows[0].ends_at,
           }
         : null,
-      plans: plans.rows.map((p) => ({
-        plan: p.plan,
-        displayName: p.display_name,
-        monthlyMmk: p.monthly_mmk,
-        annualMmk: p.annual_mmk,
-        monthlyCredits: p.monthly_credits,
-        // Shown so the annual saving is visible rather than needing arithmetic.
-        annualSavingMmk: p.monthly_mmk * 12 - p.annual_mmk,
-      })),
-      packages: packages.rows.map((p) => ({
-        key: p.key,
-        name: p.name,
-        credits: p.credits,
-        priceMmk: p.price_mmk,
-        // Shown so buyers can compare packages rather than doing the division.
-        mmkPerCredit: Math.round(p.price_mmk / p.credits),
-      })),
+      plans: plans.rows.map((p) => {
+        const monthly = applyPromotion(p.monthly_mmk, promo);
+        const annual = applyPromotion(p.annual_mmk, promo);
+        return {
+          plan: p.plan,
+          displayName: p.display_name,
+          // What they pay. `listMmk` is the undiscounted figure, for the
+          // struck-through price next to it.
+          monthlyMmk: monthly.amountMmk,
+          annualMmk: annual.amountMmk,
+          monthlyListMmk: monthly.listAmountMmk,
+          annualListMmk: annual.listAmountMmk,
+          monthlyCredits: p.monthly_credits,
+          // The annual saving is computed on what is actually charged, or it
+          // would advertise a saving nobody receives.
+          annualSavingMmk: monthly.amountMmk * 12 - annual.amountMmk,
+        };
+      }),
+      packages: packages.rows.map((p) => {
+        const price = applyPromotion(p.price_mmk, promo);
+        return {
+          key: p.key,
+          name: p.name,
+          credits: p.credits,
+          priceMmk: price.amountMmk,
+          listPriceMmk: price.listAmountMmk,
+          // Per-credit on the discounted price — the number a buyer compares.
+          mmkPerCredit: Math.round(price.amountMmk / p.credits),
+        };
+      }),
       methods: await Promise.all(
         methods.rows.map(async (m) => ({
           provider: m.provider,
@@ -147,6 +167,12 @@ export async function createPaymentIntent(
     );
     if (method.rowCount === 0) throw badRequest("That payment method is not available");
 
+    // Priced server-side at intent time and frozen on the row. A client cannot
+    // send a price, and a promotion ending mid-payment cannot reprice a quote
+    // somebody is already standing at an ATM with.
+    const promo = await activePromotion(client);
+    const priced = applyPromotion(pkg.rows[0].price_mmk, promo);
+
     // Retry on the (astronomically unlikely) code collision rather than 500.
     let created;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -158,18 +184,23 @@ export async function createPaymentIntent(
         }>(
           `INSERT INTO payment_intents
              (company_id, created_by, package_key, credits, amount_mmk, provider,
-              reference_code, expires_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, now() + make_interval(hours => $8))
+              reference_code, expires_at,
+              list_amount_mmk, discount_percent, promotion_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, now() + make_interval(hours => $8),
+                   $9, $10, $11)
            RETURNING id, reference_code, expires_at`,
           [
             user.companyId,
             user.id,
             input.packageKey,
             pkg.rows[0].credits,
-            pkg.rows[0].price_mmk,
+            priced.amountMmk,
             input.provider,
             generateReferenceCode(),
             INTENT_TTL_HOURS,
+            priced.listAmountMmk,
+            priced.discountPercent,
+            priced.promotionId,
           ]
         );
         break;
@@ -188,7 +219,9 @@ export async function createPaymentIntent(
       metadata: {
         packageKey: input.packageKey,
         credits: pkg.rows[0].credits,
-        amountMmk: pkg.rows[0].price_mmk,
+        amountMmk: priced.amountMmk,
+        listAmountMmk: priced.listAmountMmk,
+        discountPercent: priced.discountPercent,
         provider: input.provider,
       },
       ipAddress: input.ip ?? null,
@@ -198,7 +231,9 @@ export async function createPaymentIntent(
       id: intent.id,
       referenceCode: intent.reference_code,
       credits: pkg.rows[0].credits,
-      amountMmk: pkg.rows[0].price_mmk,
+      amountMmk: priced.amountMmk,
+      listAmountMmk: priced.listAmountMmk,
+      discountPercent: priced.discountPercent,
       provider: input.provider,
       status: "awaiting_payment" as const,
       expiresAt: intent.expires_at,
@@ -237,8 +272,11 @@ export async function createSubscriptionIntent(
     if (method.rowCount === 0) throw badRequest("That payment method is not available");
 
     const months = input.billingCycle === "annual" ? 12 : 1;
-    const amount =
+    const listAmount =
       input.billingCycle === "annual" ? price.rows[0].annual_mmk : price.rows[0].monthly_mmk;
+    const promo = await activePromotion(client);
+    const priced = applyPromotion(listAmount, promo);
+    const amount = priced.amountMmk;
 
     let created;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -246,9 +284,10 @@ export async function createSubscriptionIntent(
         created = await client.query<{ id: string; reference_code: string; expires_at: string }>(
           `INSERT INTO payment_intents
              (company_id, created_by, kind, plan, billing_cycle, period_months,
-              credits, amount_mmk, provider, reference_code, expires_at)
+              credits, amount_mmk, provider, reference_code, expires_at,
+              list_amount_mmk, discount_percent, promotion_id)
            VALUES ($1, $2, 'subscription', $3, $4, $5, 0, $6, $7, $8,
-                   now() + make_interval(hours => $9))
+                   now() + make_interval(hours => $9), $10, $11, $12)
            RETURNING id, reference_code, expires_at`,
           [
             user.companyId,
@@ -260,6 +299,9 @@ export async function createSubscriptionIntent(
             input.provider,
             generateReferenceCode(),
             INTENT_TTL_HOURS,
+            priced.listAmountMmk,
+            priced.discountPercent,
+            priced.promotionId,
           ]
         );
         break;
@@ -280,6 +322,8 @@ export async function createSubscriptionIntent(
         plan: input.plan,
         billingCycle: input.billingCycle,
         amountMmk: amount,
+        listAmountMmk: priced.listAmountMmk,
+        discountPercent: priced.discountPercent,
       },
       ipAddress: input.ip ?? null,
     });
@@ -294,6 +338,8 @@ export async function createSubscriptionIntent(
       monthlyCredits: price.rows[0].monthly_credits,
       credits: 0,
       amountMmk: amount,
+      listAmountMmk: priced.listAmountMmk,
+      discountPercent: priced.discountPercent,
       provider: input.provider,
       status: "awaiting_payment" as const,
       expiresAt: intent.expires_at,
@@ -376,7 +422,7 @@ export async function listOwnPayments(user: AuthUser) {
   return withContext(ctxForUser(user), async (client) => {
     const res = await client.query(
       `SELECT id, reference_code, receipt_number, credits, amount_mmk, provider, status,
-              kind, plan, billing_cycle,
+              kind, plan, billing_cycle, list_amount_mmk, discount_percent,
               payer_reference, decision_note, created_at, expires_at, decided_at
          FROM payment_intents
         ORDER BY created_at DESC LIMIT 50`
@@ -390,6 +436,8 @@ export async function listOwnPayments(user: AuthUser) {
       billingCycle: r.billing_cycle,
       credits: r.credits,
       amountMmk: r.amount_mmk,
+      listAmountMmk: r.list_amount_mmk,
+      discountPercent: r.discount_percent,
       provider: r.provider,
       status: r.status,
       payerReference: r.payer_reference,

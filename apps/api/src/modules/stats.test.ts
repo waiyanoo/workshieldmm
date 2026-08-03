@@ -89,7 +89,7 @@ describe("platform statistics", () => {
     await request(app)
       .post("/verifications")
       .set("Authorization", `Bearer ${token}`)
-      .send({ subject: { fullName: "Stat Subject", nationalId: helpers.uniq("12/STAT(N)") } })
+      .send({ subject: { fullName: "Stat Subject", nationalId: helpers.uniq("12/STAT(N)") }, authorization: helpers.verificationAuthorization() })
       .expect(201);
 
     // A purchase, taken all the way to confirmed so it counts as revenue.

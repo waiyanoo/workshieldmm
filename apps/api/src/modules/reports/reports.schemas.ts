@@ -20,6 +20,13 @@ export const reportDecisionSchema = z.object({
   notes: z.string().max(1000).optional(),
 });
 
+export const submitReportSchema = z.object({
+  declaration: z.object({
+    accepted: z.literal(true),
+    version: z.string().trim().min(1).max(50),
+  }),
+});
+
 export const withdrawSchema = z.object({
   reason: z.string().min(1).max(500),
 });

@@ -41,6 +41,7 @@ import {
   correctSchema,
   createReportSchema,
   reportDecisionSchema,
+  submitReportSchema,
   withdrawSchema,
 } from "./reports.schemas";
 
@@ -118,8 +119,9 @@ reportsRouter.post(
   "/:id/submit",
   requireAuth,
   requireRole("company_admin", "company_user"),
+  validateBody(submitReportSchema),
   asyncHandler(async (req, res) => {
-    res.json(await submitReport(req.user!, req.params.id!, req.ip));
+    res.json(await submitReport(req.user!, req.params.id!, req.body.declaration, req.ip));
   })
 );
 

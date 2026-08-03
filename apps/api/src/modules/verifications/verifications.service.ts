@@ -54,6 +54,9 @@ function ctxForUser(user: AuthUser): AppContext {
 
 export interface CreateVerificationInput {
   subject: { fullName: string; nationalId: string; dateOfBirth?: string };
+  authorization: {
+    confirmed: true;
+  };
   ip?: string | null;
 }
 
@@ -97,8 +100,10 @@ export async function createVerification(user: AuthUser, input: CreateVerificati
 
     // Create the request (pending; completed out-of-band).
     const created = await client.query<VerificationRow>(
-      `INSERT INTO verification_requests (company_id, subject_id, requested_by, status)
-       VALUES ($1, $2, $3, 'pending') RETURNING *`,
+      `INSERT INTO verification_requests
+         (company_id, subject_id, requested_by, status, authorization_basis,
+          authorization_reference, authorization_confirmed_at)
+       VALUES ($1, $2, $3, 'pending', 'employee_consent', NULL, now()) RETURNING *`,
       [user.companyId, subjectId, user.id]
     );
     const verification = created.rows[0]!;
@@ -122,7 +127,7 @@ export async function createVerification(user: AuthUser, input: CreateVerificati
       action: "verification.create",
       resourceType: "verification_request",
       resourceId: verification.id,
-      metadata: { subjectId }, // reference only — no raw PII
+      metadata: { subjectId, consentConfirmed: true },
       ipAddress: input.ip ?? null,
     });
 

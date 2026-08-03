@@ -19,7 +19,10 @@ import { creditsAdminRouter, creditsRouter } from "./modules/credits/credits.rou
 import { paymentsAdminRouter, paymentsRouter } from "./modules/payments/payments.routes";
 import { profileRouter } from "./modules/profile/profile.routes";
 import { teamRouter } from "./modules/team/team.routes";
+import { accountsRouter } from "./modules/accounts/accounts.routes";
+import { promotionsRouter } from "./modules/payments/promotions.routes";
 import { notificationsRouter } from "./modules/notifications/notifications.routes";
+import { categoriesAdminRouter } from "./modules/reports/categories-admin.routes";
 import { requireTierB } from "./middleware/featureFlags";
 import {
   accessRequestsRouter,
@@ -67,9 +70,17 @@ export function createApp(): Express {
   // and accept) because the invitee has no account yet — the router applies
   // requireAuth to everything after them.
   app.use("/team", teamRouter);
+  // Account administration. Super Admin only — resetting a password or moving a
+  // login email is the power to become another user.
+  app.use("/admin", accountsRouter);
   app.use("/notifications", notificationsRouter);
   app.use("/payments", paymentsRouter);
   app.use("/admin", paymentsAdminRouter);
+  // Promotional pricing. Super Admin only — it sets what every company pays.
+  app.use("/admin", promotionsRouter);
+  // Policy must be configurable before Tier B is switched on, so this is not
+  // feature-flagged with the employer report surfaces below.
+  app.use("/admin", categoriesAdminRouter);
 
   // --- Tier B (conduct reports) — every router behind requireTierB, which is
   // off by default in ALL environments until the Phase 0 legal review is

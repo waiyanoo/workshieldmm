@@ -102,6 +102,7 @@ async function publishReport(
   await request(app)
     .post(`/reports/${reportId}/submit`)
     .set("Authorization", `Bearer ${companyToken}`)
+    .send({ declaration: { accepted: true, version: "2026-08" } })
     .expect(200);
 
   const decision = await request(app)
@@ -318,6 +319,7 @@ describe("Tier B conduct reports", () => {
     await request(app)
       .post(`/reports/${reportId}/submit`)
       .set("Authorization", `Bearer ${companyToken}`)
+      .send({ declaration: { accepted: true, version: "2026-08" } })
       .expect(200);
 
     const rejected = await request(app)

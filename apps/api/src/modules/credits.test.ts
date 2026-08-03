@@ -100,14 +100,14 @@ describe("credits", () => {
     await request(app)
       .post("/verifications")
       .set("Authorization", `Bearer ${token}`)
-      .send({ subject: { fullName: "A", nationalId: `CR-${Date.now()}-1` } })
+      .send({ subject: { fullName: "A", nationalId: `CR-${Date.now()}-1` }, authorization: helpers.verificationAuthorization() })
       .expect(201);
     expect(await balanceOf(companyId)).toBe(5);
 
     await request(app)
       .post("/verifications")
       .set("Authorization", `Bearer ${token}`)
-      .send({ subject: { fullName: "B", nationalId: `CR-${Date.now()}-2` } })
+      .send({ subject: { fullName: "B", nationalId: `CR-${Date.now()}-2` }, authorization: helpers.verificationAuthorization() })
       .expect(201);
     expect(await balanceOf(companyId)).toBe(0);
 
@@ -115,7 +115,7 @@ describe("credits", () => {
     const broke = await request(app)
       .post("/verifications")
       .set("Authorization", `Bearer ${token}`)
-      .send({ subject: { fullName: "C", nationalId: `CR-${Date.now()}-3` } });
+      .send({ subject: { fullName: "C", nationalId: `CR-${Date.now()}-3` }, authorization: helpers.verificationAuthorization() });
     expect(broke.status).toBe(402);
     expect(broke.body.error.code).toBe("insufficient_credits");
 
@@ -154,6 +154,7 @@ describe("credits", () => {
       await request(app)
         .post(`/reports/${draft.body.id}/submit`)
         .set("Authorization", `Bearer ${token}`)
+        .send({ declaration: { accepted: true, version: "2026-08" } })
         .expect(200);
       return draft.body.id as string;
     }

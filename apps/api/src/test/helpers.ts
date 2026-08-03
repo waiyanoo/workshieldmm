@@ -23,6 +23,25 @@ export function companyRegistrationPayload() {
       // normalisation rather than falling through the not-an-NRC path.
       nationalId: "12/OUKAMA(N)123456",
     },
+    declaration: { accepted: true as const, version: "2026-08" },
+  };
+}
+
+/** The company must affirm consent for every new employment check. */
+export function verificationAuthorization() {
+  return {
+    confirmed: true as const,
+  };
+}
+
+/** A factual source record required before a reviewer completes a check. */
+export function verificationSource(response: "employment_confirmed" | "no_record" = "employment_confirmed") {
+  return {
+    sourceCompany: "Example Previous Employer",
+    contactName: "HR Contact",
+    contactMethod: "phone" as const,
+    response,
+    evidenceReference: `hr-call-${uniq("source")}`,
   };
 }
 

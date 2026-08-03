@@ -10,4 +10,9 @@ export const createVerificationSchema = z.object({
       .regex(/^\d{4}-\d{2}-\d{2}$/, "dateOfBirth must be YYYY-MM-DD")
       .optional(),
   }),
+  authorization: z.object({
+    // A check cannot be created simply by entering an NRC: the requester must
+    // explicitly confirm that the applicant has given consent.
+    confirmed: z.literal(true),
+  }),
 });

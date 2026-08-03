@@ -28,6 +28,7 @@ interface DocRow {
   uploaded_at: string;
 }
 
+
 function publicDoc(d: DocRow) {
   return {
     id: d.id,
