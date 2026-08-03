@@ -385,7 +385,7 @@ export function Layout({ children }: { children: ReactNode }) {
             borderColor: "divider",
           }}
         >
-          <Toolbar sx={{ minHeight: 60 }}>
+          <Toolbar sx={{ minHeight: 60, px: { xs: 1, sm: 2 }, gap: { xs: 0.5, sm: 1 } }}>
             <IconButton
               edge="start"
               onClick={() => setMobileOpen(true)}
@@ -393,15 +393,20 @@ export function Layout({ children }: { children: ReactNode }) {
             >
               <MenuIcon />
             </IconButton>
-            <Typography variant="h6" sx={{ flex: 1 }}>
+            <Typography
+              variant="h6"
+              noWrap
+              sx={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}
+            >
               {title}
             </Typography>
-            <Stack direction="row" spacing={0.5} alignItems="center">
+            <Stack direction="row" spacing={0.25} alignItems="center" sx={{ flexShrink: 0 }}>
               {!tierB && (
                 <Chip
                   size="small"
                   label={t("nav.tierBDisabledChip")}
                   sx={{
+                    display: { xs: "none", sm: "inline-flex" },
                     bgcolor: alpha("#F59E0B", 0.12),
                     color: "#B54708",
                     border: `1px solid ${alpha("#F59E0B", 0.3)}`,

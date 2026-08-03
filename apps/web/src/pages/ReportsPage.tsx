@@ -285,7 +285,13 @@ export function ReportsPage() {
                       {r.expiryDate ? new Date(r.expiryDate).toLocaleDateString() : "—"}
                     </TableCell>
                     <TableCell align="right">
-                      <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      <Stack
+                        direction={{ xs: "column", md: "row" }}
+                        spacing={1}
+                        justifyContent="flex-end"
+                        alignItems={{ xs: "stretch", md: "center" }}
+                        sx={{ width: "100%" }}
+                      >
                         <Button size="small" onClick={() => openDetail(r.id)}>
                           {t("common.view")}
                         </Button>

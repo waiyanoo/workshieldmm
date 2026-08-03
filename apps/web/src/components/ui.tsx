@@ -152,6 +152,12 @@ export function ScrollableTable({
               display: "block",
               "&::before": { display: "none" },
             },
+            "@media (max-width: 599.95px)": {
+              "& .MuiTableCell-root:last-child:not([colspan])": {
+                gridTemplateColumns: "minmax(0, 1fr)",
+                "&::before": { marginBottom: 0.5 },
+              },
+            },
           },
         }}
       >
@@ -188,7 +194,11 @@ export function PageHeader({
           </Typography>
         )}
       </Box>
-      {action}
+      {action && (
+        <Box sx={{ width: { xs: "100%", sm: "auto" }, "& > *": { width: { xs: "100%", sm: "auto" } } }}>
+          {action}
+        </Box>
+      )}
     </Stack>
   );
 }

@@ -58,7 +58,12 @@ export const theme = createTheme({
     MuiButton: {
       defaultProps: { disableElevation: true },
       styleOverrides: {
-        root: { borderRadius: 10, paddingLeft: 16, paddingRight: 16 },
+        root: {
+          borderRadius: 10,
+          minHeight: 44,
+          paddingLeft: 16,
+          paddingRight: 16,
+        },
         containedPrimary: {
           "&:hover": { backgroundColor: brand.primaryDark },
         },
@@ -85,6 +90,20 @@ export const theme = createTheme({
     },
     MuiDialog: {
       styleOverrides: { paper: { borderRadius: 16 } },
+    },
+    MuiDialogActions: {
+      styleOverrides: {
+        root: {
+          "@media (max-width: 599.95px)": {
+            alignItems: "stretch",
+            flexDirection: "column",
+            gap: 8,
+            paddingLeft: 16,
+            paddingRight: 16,
+            "& > :not(style) ~ :not(style)": { marginLeft: 0 },
+          },
+        },
+      },
     },
     MuiAlert: {
       styleOverrides: { root: { borderRadius: 10 } },
