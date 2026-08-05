@@ -36,7 +36,11 @@ import {
   forbidden,
   notFound,
 } from "../../lib/errors";
-import { currentDeclarationVersion, normalizeNrc } from "@hyper/shared";
+import {
+  currentDeclarationVersion,
+  normalizeNrc,
+  type DeclarationLocale,
+} from "@hyper/shared";
 import { hashNationalId } from "../../lib/crypto";
 import { REPORT_ACCEPTED_REWARD, grantCredits, spendCredits } from "../credits/credits.service";
 import { presignGet, putObject } from "../../lib/storage";
@@ -243,7 +247,7 @@ export async function attachEvidence(
 export async function submitReport(
   user: AuthUser,
   reportId: string,
-  declaration: { accepted: true; version: string },
+  declaration: { accepted: true; version: string; locale: DeclarationLocale },
   ip?: string | null
 ) {
   // See registerCompany: the version accepted must be the version on offer.
@@ -275,10 +279,17 @@ export async function submitReport(
 
     await client.query(
       `INSERT INTO company_declarations
-         (company_id, company_user_id, conduct_report_id, kind, declaration_version)
-       VALUES ($1, $2, $3, 'report_submission', $4)`,
+         (company_id, company_user_id, conduct_report_id, kind, declaration_version,
+          accepted_locale)
+       VALUES ($1, $2, $3, 'report_submission', $4, $5)`,
       // See companies.service: the recorded version is the server's.
-      [user.companyId, user.id, reportId, currentDeclarationVersion("report_submission")]
+      [
+        user.companyId,
+        user.id,
+        reportId,
+        currentDeclarationVersion("report_submission"),
+        declaration.locale,
+      ]
     );
 
     await writeAudit(client, {
@@ -287,7 +298,10 @@ export async function submitReport(
       action: "report.submit",
       resourceType: "conduct_report",
       resourceId: reportId,
-      metadata: { submissionDeclarationVersion: declaration.version },
+      metadata: {
+        submissionDeclarationVersion: declaration.version,
+        submissionDeclarationLocale: declaration.locale,
+      },
       ipAddress: ip ?? null,
     });
     return publicReport(res.rows[0]);

@@ -7,6 +7,7 @@ import {
   type AuthUser,
   type Session,
 } from "../api/client";
+import type { DeclarationLocale } from "@hyper/shared";
 import { refreshCompanyStatus } from "../hooks/useCompanyStatus";
 
 interface AuthResponse {
@@ -30,7 +31,7 @@ interface AuthContextValue {
 export interface RegisterInput {
   company: { legalName: string; registrationNumber: string };
   admin: { fullName: string; email: string; password: string; nationalId: string };
-  declaration: { accepted: true; version: string };
+  declaration: { accepted: true; version: string; locale: DeclarationLocale };
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);

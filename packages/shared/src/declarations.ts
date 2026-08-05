@@ -22,6 +22,23 @@
 
 export type DeclarationKind = "registration" | "report_submission";
 
+/**
+ * The languages a declaration is offered in. Every archived version must carry
+ * text for all of them — a version that exists in only one language cannot be
+ * shown to half the users it applies to.
+ */
+export const DECLARATION_LOCALES = ["en", "my"] as const;
+export type DeclarationLocale = (typeof DECLARATION_LOCALES)[number];
+
+/**
+ * Which of the two paragraphs a given interface language shows. The stored
+ * record needs the language of the TEXT, not the user's UI preference, so this
+ * is the one place that maps between them.
+ */
+export function declarationLocaleFor(language: string): DeclarationLocale {
+  return language.startsWith("my") ? "my" : "en";
+}
+
 export interface DeclarationText {
   en: string;
   my: string;
@@ -111,16 +128,16 @@ export function currentDeclarationVersion(kind: DeclarationKind): string {
 export function declarationText(
   kind: DeclarationKind,
   version: string,
-  locale: string
+  language: string
 ): string | null {
   const entry = DECLARATION_ARCHIVE[kind][version];
   if (!entry) return null;
-  return locale.startsWith("my") ? entry.my : entry.en;
+  return entry[declarationLocaleFor(language)];
 }
 
 /** The words currently on offer — what the acceptance screen must show. */
-export function currentDeclarationText(kind: DeclarationKind, locale: string): string {
+export function currentDeclarationText(kind: DeclarationKind, language: string): string {
   // Non-null by construction: the test suite asserts every current version is
   // present in the archive.
-  return declarationText(kind, currentDeclarationVersion(kind), locale)!;
+  return declarationText(kind, currentDeclarationVersion(kind), language)!;
 }
