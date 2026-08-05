@@ -1,6 +1,10 @@
 /**
- * Notification routes. Company users only — platform staff have the admin
- * queues, which are their equivalent.
+ * Notification routes.
+ *
+ * Open to platform staff as well as companies since 0032. The queues show what
+ * is outstanding; these carry the events no queue owns — a payment waiting to
+ * be matched against a wallet statement, a company that has just finished
+ * uploading its documents. The service decides what each caller may see.
  */
 import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
@@ -9,7 +13,9 @@ import { listNotifications, markAllRead, markRead } from "./notifications.servic
 
 export const notificationsRouter = Router();
 notificationsRouter.use(requireAuth);
-notificationsRouter.use(requireRole("company_admin", "company_user"));
+notificationsRouter.use(
+  requireRole("company_admin", "company_user", "admin_reviewer", "super_admin")
+);
 
 notificationsRouter.get(
   "/",

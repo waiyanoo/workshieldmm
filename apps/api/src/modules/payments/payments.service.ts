@@ -22,7 +22,7 @@ import { isUniqueViolation } from "../../lib/dbErrors";
 import { presignGet, putObject } from "../../lib/storage";
 import type { AuthUser } from "../../types/auth";
 import { getBalance, grantCredits } from "../credits/credits.service";
-import { notify } from "../notifications/notifications.service";
+import { notify, notifyPlatform } from "../notifications/notifications.service";
 import { activePromotion, applyPromotion } from "./promotions";
 
 function ctxForUser(user: AuthUser): AppContext {
@@ -405,6 +405,30 @@ export async function submitPaymentProof(
       throw err;
     }
 
+    // Money has left the customer's wallet and is now waiting on a human to
+    // match it against a statement. Nothing else tells anyone that: the queue
+    // screens show checks and reports, and a payment sits unclaimed until
+    // someone thinks to look at the payments page.
+    const forNotice = await client.query<{ amount_mmk: number; company_name: string }>(
+      `SELECT p.amount_mmk, c.legal_name AS company_name
+         FROM payment_intents p JOIN companies c ON c.id = p.company_id
+        WHERE p.id = $1`,
+      [intentId]
+    );
+    if (forNotice.rows[0]) {
+      await notifyPlatform(client, {
+        audience: "platform_review",
+        kind: "payment.awaiting_confirmation",
+        companyId: user.companyId,
+        params: {
+          company: forNotice.rows[0].company_name,
+          amount: forNotice.rows[0].amount_mmk,
+        },
+        link: "/admin/payments",
+        severity: "warning",
+      });
+    }
+
     await writeAudit(client, {
       actorId: user.id,
       actorType: "user",
@@ -451,8 +475,16 @@ export async function listOwnPayments(user: AuthUser) {
 
 // --- Admin: reconciliation ------------------------------------------------------
 
-export async function listPaymentsForReview(admin: AuthUser, status = "submitted") {
+export async function listPaymentsForReview(
+  admin: AuthUser,
+  query: { status?: string; q?: string; limit?: number; offset?: number } | string = {}
+) {
   return withContext(ctxForUser(admin), async (client) => {
+    const options = typeof query === "string" ? { status: query } : query;
+    const status = options.status ?? "submitted";
+    const search = options.q?.trim() ?? "";
+    const limit = options.limit ?? 25;
+    const offset = options.offset ?? 0;
     const res = await client.query(
       `SELECT p.id, p.reference_code, p.credits, p.amount_mmk, p.provider, p.status,
               p.kind, p.plan, p.billing_cycle,
@@ -462,11 +494,23 @@ export async function listPaymentsForReview(admin: AuthUser, status = "submitted
          FROM payment_intents p
          JOIN companies c ON c.id = p.company_id
         WHERE p.status = $1
-        ORDER BY p.submitted_at NULLS LAST, p.created_at
-        LIMIT 100`,
-      [status]
+          AND ($2 = '' OR c.legal_name ILIKE '%' || $2 || '%'
+            OR p.reference_code ILIKE '%' || $2 || '%'
+            OR COALESCE(p.payer_reference, '') ILIKE '%' || $2 || '%')
+        ORDER BY p.submitted_at DESC NULLS LAST, p.created_at DESC
+        LIMIT $3 OFFSET $4`,
+      [status, search, limit, offset]
     );
-    return res.rows.map((r) => ({
+    const count = await client.query<{ total: string }>(
+      `SELECT count(*)::text AS total FROM payment_intents p
+       JOIN companies c ON c.id = p.company_id
+       WHERE p.status = $1
+         AND ($2 = '' OR c.legal_name ILIKE '%' || $2 || '%'
+           OR p.reference_code ILIKE '%' || $2 || '%'
+           OR COALESCE(p.payer_reference, '') ILIKE '%' || $2 || '%')`,
+      [status, search]
+    );
+    const items = res.rows.map((r) => ({
       id: r.id,
       referenceCode: r.reference_code,
       kind: r.kind,
@@ -484,6 +528,7 @@ export async function listPaymentsForReview(admin: AuthUser, status = "submitted
       submittedAt: r.submitted_at,
       createdAt: r.created_at,
     }));
+    return { items, total: Number(count.rows[0]?.total ?? 0), limit, offset };
   });
 }
 

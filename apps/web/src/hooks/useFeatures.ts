@@ -23,6 +23,7 @@ const OFF: Features = { tierB: false, teamInvites: false };
 let cached: Features | null = null;
 let inFlight: Promise<Features> | null = null;
 const listeners = new Set<(f: Features) => void>();
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 function fetchFeatures(): Promise<Features> {
   inFlight ??= fetch(`${API_URL}/ready`)
@@ -36,20 +37,32 @@ function fetchFeatures(): Promise<Features> {
       // Unreachable API: assume everything is off. Hiding a feature that is
       // actually enabled is recoverable; showing one that is not is not.
       inFlight = null;
+      cached = OFF;
+      listeners.forEach((fn) => fn(OFF));
       return OFF;
     });
   return inFlight;
+}
+
+/** Refresh after a Super Admin changes runtime settings. */
+export function refreshFeatures(): Promise<Features> {
+  inFlight = null;
+  return fetchFeatures();
 }
 
 export function useFeatures(): Features {
   const [features, setFeatures] = useState<Features>(cached ?? OFF);
 
   useEffect(() => {
-    if (cached) return;
     listeners.add(setFeatures);
-    void fetchFeatures();
+    if (!cached) void fetchFeatures();
+    if (!pollTimer) pollTimer = setInterval(() => void refreshFeatures(), 30_000);
     return () => {
       listeners.delete(setFeatures);
+      if (listeners.size === 0 && pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
     };
   }, []);
 

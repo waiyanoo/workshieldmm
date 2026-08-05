@@ -14,6 +14,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useTranslation } from "react-i18next";
@@ -308,6 +309,7 @@ const STATUS_COLORS: Record<string, string> = {
   // employer's side it is still an open item they have to act on.
   need_more_info: "#B54708",
   completed: "#067647",
+  record_confirmed: "#067647",
   not_found: "#475467",
   verified: "#067647",
   suspended: "#B42318",
@@ -332,7 +334,15 @@ const STATUS_COLORS: Record<string, string> = {
   denied: "#B42318",
 };
 
-export function StatusChip({ status, scope }: { status: string; scope?: string }) {
+export function StatusChip({
+  status,
+  scope,
+  tooltip,
+}: {
+  status: string;
+  scope?: string;
+  tooltip?: ReactNode;
+}) {
   const { t } = useTranslation();
   const color = STATUS_COLORS[status] ?? "#475467";
   // `approved` means different things in different places: a conduct report
@@ -345,7 +355,7 @@ export function StatusChip({ status, scope }: { status: string; scope?: string }
         defaultValue: t(`status.${status}`, { defaultValue: status }),
       })
     : t(`status.${status}`, { defaultValue: status });
-  return (
+  const chip = (
     <Chip
       size="small"
       label={label}
@@ -356,6 +366,7 @@ export function StatusChip({ status, scope }: { status: string; scope?: string }
       }}
     />
   );
+  return tooltip ? <Tooltip title={tooltip} arrow>{chip}</Tooltip> : chip;
 }
 
 // --- Empty state --------------------------------------------------------------------

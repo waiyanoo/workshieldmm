@@ -65,8 +65,10 @@ companiesRouter.get(
       raw && (COMPANY_STATUSES as readonly string[]).includes(raw)
         ? (raw as CompanyStatus)
         : undefined;
-    const items = await listCompanies(ctxFromReq(req), status);
-    res.json({ items });
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    res.json(await listCompanies(ctxFromReq(req), { status, q, limit, offset }));
   })
 );
 

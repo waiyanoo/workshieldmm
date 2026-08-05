@@ -77,7 +77,7 @@ interface CompanyAccount {
   companyStatus: string;
 }
 
-const PLATFORM_ROLES = ["super_admin", "admin_reviewer", "review_board"];
+const PLATFORM_ROLES = ["super_admin", "admin_reviewer"];
 
 /** The one-time password, shown once and never retrievable. */
 function IssuedPasswordDialog({
@@ -322,6 +322,9 @@ export function AdminAccountsPage() {
               setPage(0);
               setQ("");
             }}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
             sx={{ mb: 2 }}
           >
             <Tab label={t("accounts.platformTab")} />
@@ -336,7 +339,7 @@ export function AdminAccountsPage() {
               setQ(e.target.value);
               setPage(0);
             }}
-            sx={{ mb: 2, minWidth: 340 }}
+            sx={{ mb: 2, width: { xs: "100%", sm: "auto" }, minWidth: { sm: 340 } }}
           />
 
           {tab === 0 ? (

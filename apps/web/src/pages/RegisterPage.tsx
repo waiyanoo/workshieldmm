@@ -2,13 +2,14 @@ import { useState, type FormEvent } from "react";
 import { Link as RouterLink, Navigate } from "react-router-dom";
 import { Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControlLabel, Link, Stack, Step, StepLabel, Stepper, TextField, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
+import { DECLARATION_VERSIONS, currentDeclarationText } from "@hyper/shared";
 import { useAuth } from "../auth/AuthContext";
 import { apiErrorMessage } from "../i18n/apiError";
 import { AuthShell } from "./LoginPage";
 import { EMPTY_NRC, NrcInput, nrcToString, type NrcValue } from "../components/NrcInput";
 
 export function RegisterPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user, register } = useAuth();
   const [legalName, setLegalName] = useState("");
   const [registrationNumber, setRegistrationNumber] = useState("");
@@ -34,7 +35,7 @@ export function RegisterPage() {
       await register({
         company: { legalName, registrationNumber },
         admin: { fullName, email, password, nationalId },
-        declaration: { accepted: true, version: "2026-08" },
+        declaration: { accepted: true, version: DECLARATION_VERSIONS.registration },
       });
     } catch (err) {
       setError(apiErrorMessage(err));
@@ -98,7 +99,9 @@ export function RegisterPage() {
       </form>
       <Dialog open={declarationOpen} onClose={() => setDeclarationOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{t("register.declarationTitle")}</DialogTitle>
-        <DialogContent dividers><Stack spacing={2}><Typography variant="body2">{t("register.declaration")}</Typography><Typography variant="caption" color="text.secondary">{t("register.declarationVersion")}</Typography></Stack></DialogContent>
+        <DialogContent dividers><Stack spacing={2}>{/* The wording comes from the shared archive, not the locale files: it
+              is the thing being agreed to, and the version recorded against
+              this acceptance has to resolve back to exactly these words. */}<Typography variant="body2">{currentDeclarationText("registration", i18n.language)}</Typography><Typography variant="caption" color="text.secondary">{t("register.declarationVersion", { version: DECLARATION_VERSIONS.registration })}</Typography></Stack></DialogContent>
         <DialogActions><Button onClick={() => setDeclarationOpen(false)}>{t("common.close")}</Button></DialogActions>
       </Dialog>
     </AuthShell>

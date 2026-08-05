@@ -28,6 +28,19 @@ export const conflict = (msg: string) => new AppError(409, msg, "conflict");
  * only useful part of this message — which dates are the problem — with "that
  * action is no longer possible".
  */
+/**
+ * The submitted declaration version is not the one now in force — typically a
+ * browser left open across a deployment. Its own code so the client can say
+ * "reload and read it again" rather than "that action is no longer possible":
+ * recording agreement to wording the person never saw is the one outcome this
+ * table exists to prevent.
+ */
+export const declarationOutdated = () =>
+  new AppError(
+    409,
+    "The declaration has been updated since this page was opened",
+    "declaration_outdated"
+  );
 export const promotionOverlap = () =>
   new AppError(
     409,

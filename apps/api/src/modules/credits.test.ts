@@ -154,7 +154,7 @@ describe("credits", () => {
       await request(app)
         .post(`/reports/${draft.body.id}/submit`)
         .set("Authorization", `Bearer ${token}`)
-        .send({ declaration: { accepted: true, version: "2026-08" } })
+        .send({ declaration: helpers.reportDeclaration() })
         .expect(200);
       return draft.body.id as string;
     }

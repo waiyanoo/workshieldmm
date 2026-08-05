@@ -150,7 +150,10 @@ paymentsAdminRouter.get(
   requireRole("admin_reviewer", "super_admin"),
   asyncHandler(async (req, res) => {
     const status = typeof req.query.status === "string" ? req.query.status : "submitted";
-    res.json({ items: await listPaymentsForReview(req.user!, status) });
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    res.json(await listPaymentsForReview(req.user!, { status, q, limit, offset }));
   })
 );
 

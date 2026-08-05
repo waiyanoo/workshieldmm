@@ -308,6 +308,7 @@ interface AuditRow {
   metadata: Record<string, unknown>;
   ip_address: string | null;
   timestamp: string;
+  actor_name: string | null;
 }
 
 export interface AuditQuery {
@@ -315,19 +316,37 @@ export interface AuditQuery {
   offset: number;
   action?: string;
   resourceType?: string;
+  resourceId?: string;
+  actor?: string;
+  from?: string;
+  to?: string;
 }
 
 export async function readAuditLogs(admin: AuthUser, q: AuditQuery, ip?: string | null) {
   return withContext(ctxForUser(admin), async (client) => {
-    const res = await client.query<AuditRow>(
-      `SELECT id, actor_id, actor_type, action, resource_type, resource_id,
-              metadata, ip_address, "timestamp"
-         FROM audit.audit_logs
-        WHERE ($1::text IS NULL OR action = $1)
+    const params = [q.action ?? null, q.resourceType ?? null, q.resourceId ?? null,
+      q.actor ?? null, q.from ?? null, q.to ?? null];
+    const where = `WHERE ($1::text IS NULL OR action LIKE $1 || '%')
           AND ($2::text IS NULL OR resource_type = $2)
-        ORDER BY id DESC
-        LIMIT $3 OFFSET $4`,
-      [q.action ?? null, q.resourceType ?? null, q.limit, q.offset]
+          AND ($3::text IS NULL OR resource_id::text ILIKE '%' || $3 || '%')
+          AND ($4::text IS NULL OR actor_id::text ILIKE '%' || $4 || '%' OR actor_type ILIKE '%' || $4 || '%')
+          AND ($5::timestamptz IS NULL OR "timestamp" >= $5::timestamptz)
+          AND ($6::timestamptz IS NULL OR "timestamp" <= $6::timestamptz)`;
+    const res = await client.query<AuditRow>(
+      `SELECT a.id, a.actor_id, a.actor_type, a.action, a.resource_type, a.resource_id,
+              a.metadata, a.ip_address, a."timestamp",
+              COALESCE(pu.full_name, cu.full_name) AS actor_name
+         FROM audit.audit_logs a
+         LEFT JOIN platform_users pu ON a.actor_type = 'admin' AND pu.id = a.actor_id
+         LEFT JOIN company_users cu ON a.actor_type = 'user' AND cu.id = a.actor_id
+        ${where}
+        ORDER BY a.id DESC
+        LIMIT $7 OFFSET $8`,
+      [...params, q.limit, q.offset]
+    );
+    const count = await client.query<{ total: string }>(
+      `SELECT count(*)::text AS total FROM audit.audit_logs ${where}`,
+      params
     );
 
     // The read itself is an auditable access to sensitive data. (§4)
@@ -341,13 +360,18 @@ export async function readAuditLogs(admin: AuthUser, q: AuditQuery, ip?: string 
         offset: q.offset,
         ...(q.action ? { action: q.action } : {}),
         ...(q.resourceType ? { resourceType: q.resourceType } : {}),
+        ...(q.resourceId ? { resourceId: q.resourceId } : {}),
+        ...(q.actor ? { actor: q.actor } : {}),
+        ...(q.from ? { from: q.from } : {}),
+        ...(q.to ? { to: q.to } : {}),
       },
       ipAddress: ip ?? null,
     });
 
-    return res.rows.map((r) => ({
+    const items = res.rows.map((r) => ({
       id: Number(r.id),
       actorId: r.actor_id,
+      actorName: r.actor_name,
       actorType: r.actor_type,
       action: r.action,
       resourceType: r.resource_type,
@@ -356,5 +380,6 @@ export async function readAuditLogs(admin: AuthUser, q: AuditQuery, ip?: string 
       ipAddress: r.ip_address,
       timestamp: r.timestamp,
     }));
+    return { items, total: Number(count.rows[0]?.total ?? 0), limit: q.limit, offset: q.offset };
   });
 }

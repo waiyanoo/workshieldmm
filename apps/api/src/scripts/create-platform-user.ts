@@ -1,6 +1,6 @@
 /**
  * Provision a platform staff account (super_admin | admin_reviewer |
- * review_board). These roles are never self-registered. MFA is enabled at
+ * admin_reviewer). These roles are never self-registered. MFA is enabled at
  * creation and the enrollment URL is printed once — capture it into an
  * authenticator app. (§2 MFA, concept §4)
  *

@@ -31,6 +31,7 @@ import { EmptyState, GlassCard, PageHeader, ScrollableTable, StatusChip } from "
 import { EMPTY_NRC, NrcInput, nrcToString, type NrcValue } from "../components/NrcInput";
 import { formatCalendarDate } from "../lib/date";
 import { useTranslation } from "react-i18next";
+import { DECLARATION_VERSIONS, currentDeclarationText } from "@hyper/shared";
 import { apiErrorMessage } from "../i18n/apiError";
 
 interface Category {
@@ -72,7 +73,7 @@ interface Report {
 }
 
 export function ReportsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [reports, setReports] = useState<Report[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -174,7 +175,7 @@ export function ReportsPage() {
     try {
       await api(`/reports/${reportId}/submit`, {
         method: "POST",
-        body: { declaration: { accepted: true, version: "2026-08" } },
+        body: { declaration: { accepted: true, version: DECLARATION_VERSIONS.report_submission } },
       });
       setNotice(t("reports.submitted"));
       await load();
@@ -508,7 +509,12 @@ export function ReportsPage() {
             </Alert>}
             <FormControlLabel
               control={<Checkbox checked={submissionDeclarationAccepted} onChange={(e) => setSubmissionDeclarationAccepted(e.target.checked)} />}
-              label={<Typography variant="body2">{t("reports.submitDeclaration")}</Typography>}
+              label={
+                <Typography variant="body2">
+                  {/* Archived wording, not a locale string — see RegisterPage. */}
+                  {currentDeclarationText("report_submission", i18n.language)}
+                </Typography>
+              }
             />
           </Stack>
         </DialogContent>

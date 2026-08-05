@@ -20,12 +20,14 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   MenuItem,
   Stack,
   TableBody,
@@ -37,7 +39,7 @@ import {
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import VerifiedIcon from "@mui/icons-material/Verified";
-import { Link as RouterLink, useParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import { apiErrorMessage } from "../i18n/apiError";
@@ -91,6 +93,10 @@ const PLANS = [
 export function AdminCompanyDetailPage() {
   const { t } = useTranslation();
   const { id = "" } = useParams();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnQuery = searchParams.get("return");
+  const backTo = searchParams.get("from") === "operations" ? "/admin/operations" : `/admin/companies${returnQuery ? `?${returnQuery}` : ""}`;
 
   const [detail, setDetail] = useState<CompanyDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +106,8 @@ export function AdminCompanyDetailPage() {
   // Verify / suspend / reactivate
   const [verifying, setVerifying] = useState(false);
   const [verifyNotes, setVerifyNotes] = useState("");
+  const [identityChecked, setIdentityChecked] = useState(false);
+  const [registrationChecked, setRegistrationChecked] = useState(false);
   const [statusNext, setStatusNext] = useState<"verified" | "suspended" | null>(null);
   const [reason, setReason] = useState("");
 
@@ -136,7 +144,10 @@ export function AdminCompanyDetailPage() {
       setVerifying(false);
       setVerifyNotes("");
       setNotice(t("admin.verifiedNotice"));
-      await load();
+      const pending = await api<{ items: { id: string }[] }>("/companies?status=pending&limit=2&offset=0");
+      const next = pending.items.find((company) => company.id !== id);
+      const nextQuery = searchParams.get("from") === "operations" ? "from=operations" : `return=${encodeURIComponent(returnQuery ?? "")}`;
+      navigate(next ? `/admin/companies/${next.id}?${nextQuery}` : backTo, { replace: true });
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
@@ -195,7 +206,7 @@ export function AdminCompanyDetailPage() {
   if (!detail) {
     return (
       <Stack spacing={2}>
-        <Button component={RouterLink} to="/admin/companies" startIcon={<ArrowBackIcon />}>
+        <Button component={RouterLink} to={backTo} startIcon={<ArrowBackIcon />}>
           {t("admin.backToCompanies")}
         </Button>
         {error ? <Alert severity="error">{error}</Alert> : <Typography>{t("common.loading")}</Typography>}
@@ -211,7 +222,7 @@ export function AdminCompanyDetailPage() {
     <Stack spacing={3}>
       <Button
         component={RouterLink}
-        to="/admin/companies"
+        to={backTo}
         startIcon={<ArrowBackIcon />}
         sx={{ alignSelf: "flex-start" }}
       >
@@ -283,7 +294,7 @@ export function AdminCompanyDetailPage() {
                 variant="contained"
                 startIcon={<VerifiedIcon />}
                 disabled={!detail.verification.ready || busy}
-                onClick={() => setVerifying(true)}
+                onClick={() => { setIdentityChecked(false); setRegistrationChecked(false); setVerifying(true); }}
               >
                 {t("admin.verify")}
               </Button>
@@ -413,6 +424,12 @@ export function AdminCompanyDetailPage() {
         <DialogContent dividers>
           <Stack spacing={2} mt={1}>
             <Alert severity="info">{t("admin.verifyConsequences")}</Alert>
+            <Stack spacing={0.5}>
+              <Typography variant="subtitle2">{t("admin.reviewChecklist")}</Typography>
+              <FormControlLabel control={<Checkbox checked={detail.verification.ready} disabled />} label={t("admin.checkDocumentsApproved")} />
+              <FormControlLabel control={<Checkbox checked={registrationChecked} onChange={(e) => setRegistrationChecked(e.target.checked)} />} label={t("admin.checkRegistrationMatch")} />
+              <FormControlLabel control={<Checkbox checked={identityChecked} onChange={(e) => setIdentityChecked(e.target.checked)} />} label={t("admin.checkRepresentativeIdentity")} />
+            </Stack>
             <TextField
               label={t("admin.verifyNotes")}
               value={verifyNotes}
@@ -428,7 +445,7 @@ export function AdminCompanyDetailPage() {
           <Button onClick={() => setVerifying(false)} disabled={busy}>
             {t("common.cancel")}
           </Button>
-          <Button variant="contained" onClick={() => void verify()} disabled={busy}>
+          <Button variant="contained" onClick={() => void verify()} disabled={busy || !identityChecked || !registrationChecked}>
             {busy ? t("admin.verifying") : t("admin.verify")}
           </Button>
         </DialogActions>

@@ -1,40 +1,51 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
+import { Box, CircularProgress } from "@mui/material";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
-import { DashboardPage } from "./pages/DashboardPage";
-import { VerificationsPage } from "./pages/VerificationsPage";
-import { AdminCompaniesPage } from "./pages/AdminCompaniesPage";
-import { AdminVerificationsPage } from "./pages/AdminVerificationsPage";
-import { AdminAuditPage } from "./pages/AdminAuditPage";
-import { ReportsPage } from "./pages/ReportsPage";
-import { AccessSearchPage } from "./pages/AccessSearchPage";
-import { AdminReportsPage } from "./pages/AdminReportsPage";
-import { AdminAccessRequestsPage } from "./pages/AdminAccessRequestsPage";
-import { AdminOversightPage } from "./pages/AdminOversightPage";
-import { BuyCreditsPage } from "./pages/BuyCreditsPage";
-import { AdminPaymentsPage } from "./pages/AdminPaymentsPage";
-import { ProfilePage } from "./pages/ProfilePage";
-import { AcceptInvitePage } from "./pages/AcceptInvitePage";
-import { ReceiptsPage } from "./pages/ReceiptsPage";
-import { AdminCompanyDetailPage } from "./pages/AdminCompanyDetailPage";
-import { AdminStatsPage } from "./pages/AdminStatsPage";
-import { AdminAccountsPage } from "./pages/AdminAccountsPage";
-import { AdminPromotionsPage } from "./pages/AdminPromotionsPage";
-import { AdminReportCategoriesPage } from "./pages/AdminReportCategoriesPage";
-import { AdminOperationsPage } from "./pages/AdminOperationsPage";
-import { ChangePasswordPage } from "./pages/ChangePasswordPage";
-import { MfaSetupPage } from "./pages/MfaSetupPage";
+
+const DashboardPage = lazy(() => import("./pages/DashboardPage").then((m) => ({ default: m.DashboardPage })));
+const VerificationsPage = lazy(() => import("./pages/VerificationsPage").then((m) => ({ default: m.VerificationsPage })));
+const AdminCompaniesPage = lazy(() => import("./pages/AdminCompaniesPage").then((m) => ({ default: m.AdminCompaniesPage })));
+const AdminVerificationsPage = lazy(() => import("./pages/AdminVerificationsPage").then((m) => ({ default: m.AdminVerificationsPage })));
+const AdminAuditPage = lazy(() => import("./pages/AdminAuditPage").then((m) => ({ default: m.AdminAuditPage })));
+const ReportsPage = lazy(() => import("./pages/ReportsPage").then((m) => ({ default: m.ReportsPage })));
+const AccessSearchPage = lazy(() => import("./pages/AccessSearchPage").then((m) => ({ default: m.AccessSearchPage })));
+const AdminReportsPage = lazy(() => import("./pages/AdminReportsPage").then((m) => ({ default: m.AdminReportsPage })));
+const AdminAccessRequestsPage = lazy(() => import("./pages/AdminAccessRequestsPage").then((m) => ({ default: m.AdminAccessRequestsPage })));
+const AdminOversightPage = lazy(() => import("./pages/AdminOversightPage").then((m) => ({ default: m.AdminOversightPage })));
+const BuyCreditsPage = lazy(() => import("./pages/BuyCreditsPage").then((m) => ({ default: m.BuyCreditsPage })));
+const AdminPaymentsPage = lazy(() => import("./pages/AdminPaymentsPage").then((m) => ({ default: m.AdminPaymentsPage })));
+const ProfilePage = lazy(() => import("./pages/ProfilePage").then((m) => ({ default: m.ProfilePage })));
+const AcceptInvitePage = lazy(() => import("./pages/AcceptInvitePage").then((m) => ({ default: m.AcceptInvitePage })));
+const ReceiptsPage = lazy(() => import("./pages/ReceiptsPage").then((m) => ({ default: m.ReceiptsPage })));
+const AdminCompanyDetailPage = lazy(() => import("./pages/AdminCompanyDetailPage").then((m) => ({ default: m.AdminCompanyDetailPage })));
+const AdminStatsPage = lazy(() => import("./pages/AdminStatsPage").then((m) => ({ default: m.AdminStatsPage })));
+const AdminAccountsPage = lazy(() => import("./pages/AdminAccountsPage").then((m) => ({ default: m.AdminAccountsPage })));
+const AdminPromotionsPage = lazy(() => import("./pages/AdminPromotionsPage").then((m) => ({ default: m.AdminPromotionsPage })));
+const AdminReportCategoriesPage = lazy(() => import("./pages/AdminReportCategoriesPage").then((m) => ({ default: m.AdminReportCategoriesPage })));
+const AdminOperationsPage = lazy(() => import("./pages/AdminOperationsPage").then((m) => ({ default: m.AdminOperationsPage })));
+const AdminSettingsPage = lazy(() => import("./pages/AdminSettingsPage").then((m) => ({ default: m.AdminSettingsPage })));
+const ChangePasswordPage = lazy(() => import("./pages/ChangePasswordPage").then((m) => ({ default: m.ChangePasswordPage })));
+const MfaSetupPage = lazy(() => import("./pages/MfaSetupPage").then((m) => ({ default: m.MfaSetupPage })));
 
 const COMPANY = ["company_admin", "company_user"];
 const REVIEWERS = ["super_admin", "admin_reviewer"];
 
+function RouteLoading() {
+  return (
+    <Box sx={{ minHeight: 240, display: "grid", placeItems: "center" }} role="status">
+      <CircularProgress size={30} />
+    </Box>
+  );
+}
+
 function page(element: ReactNode, roles?: string[]) {
   return (
     <ProtectedRoute roles={roles}>
-      <Layout>{element}</Layout>
+      <Layout><Suspense fallback={<RouteLoading />}>{element}</Suspense></Layout>
     </ProtectedRoute>
   );
 }
@@ -47,7 +58,7 @@ function page(element: ReactNode, roles?: string[]) {
 function verifiedPage(element: ReactNode) {
   return (
     <ProtectedRoute roles={COMPANY} requiresVerifiedCompany>
-      <Layout>{element}</Layout>
+      <Layout><Suspense fallback={<RouteLoading />}>{element}</Suspense></Layout>
     </ProtectedRoute>
   );
 }
@@ -58,11 +69,11 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       {/* Public: the invitee has no account until they accept. */}
-      <Route path="/invite/:token" element={<AcceptInvitePage />} />
+      <Route path="/invite/:token" element={<Suspense fallback={<RouteLoading />}><AcceptInvitePage /></Suspense>} />
       {/* Outside ProtectedRoute: a locked-out account has to be able to reach
           the one screen that unlocks it. */}
-      <Route path="/change-password" element={<ChangePasswordPage />} />
-      <Route path="/mfa-setup" element={<MfaSetupPage />} />
+      <Route path="/change-password" element={<Suspense fallback={<RouteLoading />}><ChangePasswordPage /></Suspense>} />
+      <Route path="/mfa-setup" element={<Suspense fallback={<RouteLoading />}><MfaSetupPage /></Suspense>} />
 
 
       {/* The dashboard is the one company page that works before verification:
@@ -87,6 +98,7 @@ export function App() {
       <Route path="/admin/operations" element={page(<AdminOperationsPage />, REVIEWERS)} />
       <Route path="/admin/stats" element={page(<AdminStatsPage />, ["super_admin"])} />
       <Route path="/admin/accounts" element={page(<AdminAccountsPage />, ["super_admin"])} />
+      <Route path="/admin/settings" element={page(<AdminSettingsPage />, ["super_admin"])} />
       <Route
         path="/admin/promotions"
         element={page(<AdminPromotionsPage />, ["super_admin"])}

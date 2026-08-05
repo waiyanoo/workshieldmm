@@ -12,15 +12,14 @@
  * permission that privileged users outrank.
  */
 import type { RequestHandler } from "express";
-import { env } from "../config/env";
 import { featureDisabled } from "../lib/errors";
+import { getFeatureSettings } from "../modules/admin/settings.service";
 
 export const requireTierB: RequestHandler = (_req, _res, next) => {
-  if (!env.FEATURE_TIER_B_ENABLED) {
-    next(featureDisabled("Tier B (conduct reports) is not enabled in this environment"));
-    return;
-  }
-  next();
+  void getFeatureSettings().then((features) => {
+    if (!features.tierB) return next(featureDisabled("Tier B (conduct reports) is disabled"));
+    next();
+  }).catch(next);
 };
 
 /**
@@ -32,9 +31,8 @@ export const requireTierB: RequestHandler = (_req, _res, next) => {
  * feature is either present or absent in a deployment.
  */
 export const requireTeamInvites: RequestHandler = (_req, _res, next) => {
-  if (!env.FEATURE_TEAM_INVITES_ENABLED) {
-    next(featureDisabled("Team invitations are not enabled in this environment"));
-    return;
-  }
-  next();
+  void getFeatureSettings().then((features) => {
+    if (!features.teamInvites) return next(featureDisabled("Team invitations are disabled"));
+    next();
+  }).catch(next);
 };

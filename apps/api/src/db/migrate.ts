@@ -67,12 +67,56 @@ async function appliedMigrations(client: Client): Promise<Map<string, string>> {
   return new Map(res.rows.map((r) => [r.name, r.checksum]));
 }
 
+/** The leading number, e.g. "0026" from "0026_launch_promotion.sql". */
+function ordinal(file: string): string {
+  return file.slice(0, 4);
+}
+
+/**
+ * Refuse a NEW migration that reuses an ordinal.
+ *
+ * Files are applied in filename order, so two migrations sharing a number are
+ * ordered by whatever follows the underscore — alphabetical, arbitrary, and
+ * nothing to do with intent. It has happened once already (0024, 0025 and 0026
+ * each exist twice, from two people numbering against the same last-seen file),
+ * and there it was harmless because those pairs are independent. The next one
+ * might not be.
+ *
+ * Only PENDING files are checked, and only once a database has history. A fresh
+ * database replays everything in an order already proven by the environments
+ * running it, so blocking there would break new installs to no purpose;
+ * renaming migrations that are already applied would be worse still, since the
+ * ledger is keyed by filename and they would all re-run.
+ */
+function assertNoNewOrdinalCollision(files: string[], applied: Map<string, string>): void {
+  if (applied.size === 0) return;
+  const pending = files.filter((f) => !applied.has(f));
+  if (pending.length === 0) return;
+
+  const taken = new Map<string, string>();
+  for (const file of files) if (applied.has(file)) taken.set(ordinal(file), file);
+
+  const clashes: string[] = [];
+  for (const file of pending) {
+    const existing = taken.get(ordinal(file));
+    if (existing) clashes.push(`  ${file} reuses the number of ${existing} (already applied)`);
+    else taken.set(ordinal(file), file);
+  }
+  if (clashes.length) {
+    throw new Error(
+      `migration numbering conflict:\n${clashes.join("\n")}\n` +
+        `Renumber the new file(s) above the highest existing migration.`
+    );
+  }
+}
+
 async function up(): Promise<void> {
   const client = await connect();
   try {
     await ensureMigrationsTable(client);
     const applied = await appliedMigrations(client);
     const files = sqlFiles(MIGRATIONS_DIR);
+    assertNoNewOrdinalCollision(files, applied);
     let ran = 0;
 
     for (const file of files) {

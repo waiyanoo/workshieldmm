@@ -3,6 +3,7 @@ import { alpha } from "@mui/material/styles";
 import { Alert, Box, Button, Card, CardContent, Stack, Typography } from "@mui/material";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import TaskAltIcon from "@mui/icons-material/TaskAlt";
 import DescriptionIcon from "@mui/icons-material/Description";
 import BusinessIcon from "@mui/icons-material/Business";
@@ -23,6 +24,13 @@ interface Company {
   id: string;
   legalName: string;
   status: string;
+}
+
+interface VerificationSummary {
+  id: string;
+  status: string;
+  subjectName: string | null;
+  createdAt: string;
 }
 
 async function count(path: string, filter?: (item: never) => boolean): Promise<number | "—"> {
@@ -50,18 +58,18 @@ function BentoStat({
     <Card
       sx={{
         height: "100%",
-        minHeight: 148,
+        minHeight: { xs: 118, sm: 148 },
         overflow: "hidden",
         background: `linear-gradient(145deg, ${alpha("#FFFFFF", 0.92)}, ${alpha(tone, 0.08)})`,
         backdropFilter: "blur(16px)",
         borderColor: alpha(tone, 0.16),
       }}
     >
-      <CardContent sx={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", p: 2.25 }}>
+      <CardContent sx={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", p: { xs: 1.5, sm: 2.25 } }}>
         <Box
           sx={{
-            width: 40,
-            height: 40,
+            width: { xs: 34, sm: 40 },
+            height: { xs: 34, sm: 40 },
             display: "grid",
             placeItems: "center",
             borderRadius: 2.5,
@@ -72,7 +80,7 @@ function BentoStat({
           {icon}
         </Box>
         <Box sx={{ mt: 2 }}>
-          <Typography variant="h4" lineHeight={1.1}>{value}</Typography>
+          <Typography variant="h4" lineHeight={1.1} fontSize={{ xs: 26, sm: 34 }}>{value}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{label}</Typography>
         </Box>
       </CardContent>
@@ -142,31 +150,32 @@ export function DashboardPage() {
   const tierB = useTierB();
   const companyStatus = useCompanyStatus();
   const { t } = useTranslation();
-  const [company, setCompany] = useState<Company | null>(null);
   const [stats, setStats] = useState<Record<string, number | "—">>({});
+  const [recentChecks, setRecentChecks] = useState<VerificationSummary[]>([]);
 
   const isCompany = user?.userType === "company";
   const isActiveCompany = isCompany && companyStatus.isVerified;
   const isReviewer = user?.role === "admin_reviewer" || user?.role === "super_admin";
   const isSuperAdmin = user?.role === "super_admin";
-
-  useEffect(() => {
-    if (isCompany && user?.companyId) {
-      api<Company>(`/companies/${user.companyId}`).then(setCompany).catch(() => undefined);
-    }
-  }, [isCompany, user?.companyId]);
+  const company: Company | null =
+    isCompany && user?.companyId && companyStatus.loaded && companyStatus.status && companyStatus.legalName
+      ? { id: user.companyId, legalName: companyStatus.legalName, status: companyStatus.status }
+      : null;
 
   useEffect(() => {
     void (async () => {
       const next: Record<string, number | "—"> = {};
       if (isActiveCompany) {
         try {
-          const res = await api<{ items: { status: string }[] }>("/verifications");
+          const res = await api<{ items: VerificationSummary[] }>("/verifications");
           next.checks = res.items.length;
           next.checksPending = res.items.filter((item) => item.status === "pending").length;
-          next.checksDone = res.items.filter((item) => item.status !== "pending").length;
+          next.checksAttention = res.items.filter((item) => item.status === "need_more_info").length;
+          next.checksDone = res.items.filter((item) => ["completed", "not_found"].includes(item.status)).length;
+          setRecentChecks(res.items.slice(0, 3));
         } catch {
-          next.checks = next.checksPending = next.checksDone = "—";
+          next.checks = next.checksPending = next.checksAttention = next.checksDone = "—";
+          setRecentChecks([]);
         }
         if (tierB) next.reports = await count("/reports");
       }
@@ -195,7 +204,8 @@ export function DashboardPage() {
       <PageHeader title={t("dashboard.title")} subtitle={t("dashboard.subtitle")} />
       <Box sx={grid}>
         <Box sx={{ gridColumn: { xs: "auto", md: "span 2" } }}>
-          {isCompany && company ? (
+          {isCompany ? (
+            company ? (
             <BentoHero
               eyebrow={t("nav.screening")}
               title={company.legalName}
@@ -207,7 +217,11 @@ export function DashboardPage() {
               }
               primaryAction={company.status === "verified" ? (
                 <Button component={RouterLink} to="/verifications" variant="contained" color="inherit" endIcon={<ArrowForwardIcon />} sx={{ color: brand.navy, bgcolor: "#fff", "&:hover": { bgcolor: alpha("#fff", 0.9) } }}>
-                  {t("dashboard.newCheck")}
+                  {t(
+                    typeof stats.checksDone === "number" && stats.checksDone > 0
+                      ? "dashboard.checkAnotherApplicant"
+                      : "dashboard.checkApplicant"
+                  )}
                 </Button>
               ) : undefined}
               secondaryAction={company.status === "verified" ? (
@@ -216,6 +230,13 @@ export function DashboardPage() {
                 </Button>
               ) : undefined}
             />
+            ) : (
+            <Card sx={{ minHeight: 224, bgcolor: brand.navy }} aria-busy="true">
+              <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
+                <Typography sx={{ color: alpha("#fff", 0.7) }}>{t("common.loading")}</Typography>
+              </CardContent>
+            </Card>
+            )
           ) : (
             <BentoHero
               eyebrow={t("nav.review")}
@@ -232,12 +253,76 @@ export function DashboardPage() {
 
         {isActiveCompany && (
           <>
+            {typeof stats.checksAttention === "number" && stats.checksAttention > 0 && (
+              <Box sx={{ gridColumn: "1 / -1" }}>
+                <Card sx={{ borderColor: alpha("#D92D20", 0.28), background: `linear-gradient(135deg, ${alpha("#D92D20", 0.08)}, #fff 60%)` }}>
+                  <CardContent>
+                    <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "flex-start", sm: "center" }} spacing={2}>
+                      <Box sx={{ width: 44, height: 44, flexShrink: 0, borderRadius: 2.5, display: "grid", placeItems: "center", color: "#D92D20", bgcolor: alpha("#D92D20", 0.1) }}>
+                        <ErrorOutlineIcon />
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="h6">{t("dashboard.needsAttention")}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {t("dashboard.attentionChecks", { count: stats.checksAttention })}
+                        </Typography>
+                      </Box>
+                      <Button component={RouterLink} to="/verifications" variant="contained" color="error">
+                        {t("dashboard.reviewRequests")}
+                      </Button>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Box>
+            )}
+            <Box sx={{ gridColumn: "1 / -1" }}>
+              <Card>
+                <CardContent>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2} mb={1.5}>
+                    <Typography variant="h6">{t("dashboard.recentChecks")}</Typography>
+                    <Button component={RouterLink} to="/verifications" size="small">{t("dashboard.viewAllChecks")}</Button>
+                  </Stack>
+                  {recentChecks.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">{t("dashboard.noRecentChecks")}</Typography>
+                  ) : (
+                    <Stack>
+                      {recentChecks.map((check, index) => (
+                        <Stack
+                          key={check.id}
+                          direction={{ xs: "column", sm: "row" }}
+                          alignItems={{ xs: "flex-start", sm: "center" }}
+                          spacing={{ xs: 0.75, sm: 2 }}
+                          sx={{ py: 1.25, borderTop: index === 0 ? 1 : 0, borderBottom: 1, borderColor: "divider" }}
+                        >
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography fontWeight={600} noWrap>{check.subjectName ?? t("common.none")}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {new Date(check.createdAt).toLocaleDateString()} · {check.id.slice(0, 8)}
+                            </Typography>
+                          </Box>
+                          <StatusChip
+                            status={check.status === "completed" ? "record_confirmed" : check.status}
+                            tooltip={t(`verifications.statusHelp.${check.status === "completed" ? "record_confirmed" : check.status}`)}
+                          />
+                          {check.status === "need_more_info" && (
+                            <Button component={RouterLink} to="/verifications" size="small" variant="outlined">
+                              {t("verifications.answerReviewer")}
+                            </Button>
+                          )}
+                        </Stack>
+                      ))}
+                    </Stack>
+                  )}
+                </CardContent>
+              </Card>
+            </Box>
+            <Box sx={{ gridColumn: "1 / -1" }}><CreditBalance glass compact /></Box>
             <Box
               sx={{
                 display: "grid",
-                gridColumn: { xs: "auto", md: "span 2" },
-                gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" },
-                gridAutoRows: "minmax(148px, 1fr)",
+                gridColumn: "1 / -1",
+                gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", md: "repeat(4, minmax(0, 1fr))" },
+                gridAutoRows: { xs: "minmax(118px, 1fr)", sm: "minmax(148px, 1fr)" },
                 gap: 2,
               }}
             >
@@ -246,7 +331,6 @@ export function DashboardPage() {
               <BentoStat label={t("dashboard.completed")} value={stats.checksDone ?? "…"} icon={<TaskAltIcon />} tone="#12A150" />
               {tierB && <BentoStat label={t("dashboard.conductReports")} value={stats.reports ?? "…"} icon={<DescriptionIcon />} tone="#9F1AB1" />}
             </Box>
-            <Box sx={{ gridColumn: "1 / -1" }}><CreditBalance glass /></Box>
           </>
         )}
 

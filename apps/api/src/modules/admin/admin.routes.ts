@@ -19,6 +19,7 @@ import {
 import { getPlatformStats } from "./stats.service";
 import { getOperationalSummary } from "./operations.service";
 import { grantSubscription } from "./subscriptions.service";
+import { getFeatureSettings, updateFeatureSettings } from "./settings.service";
 
 export const adminRouter = Router();
 
@@ -42,6 +43,25 @@ const decisionSchema = z.object({
 });
 
 const QUEUE_STATUSES = ["pending", "need_more_info", "completed", "not_found", "all"];
+const featureSettingsSchema = z.object({
+  tierB: z.boolean(),
+  teamInvites: z.boolean(),
+}).strict();
+
+adminRouter.get(
+  "/settings/features",
+  requireRole("super_admin"),
+  asyncHandler(async (_req, res) => res.json(await getFeatureSettings(true)))
+);
+
+adminRouter.patch(
+  "/settings/features",
+  requireRole("super_admin"),
+  validateBody(featureSettingsSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await updateFeatureSettings(req.user!, req.body, req.ip));
+  })
+);
 
 // The review queue. Filterable by status, by who holds the item, by a search
 // across subject/NRC/company, and by age — the four questions a reviewer opens
@@ -206,7 +226,10 @@ adminRouter.get(
       typeof req.query.resourceType === "string" && req.query.resourceType
         ? req.query.resourceType
         : undefined;
-    const items = await readAuditLogs(req.user!, { limit, offset, action, resourceType }, req.ip);
-    res.json({ items, limit, offset });
+    const resourceId = typeof req.query.resourceId === "string" && req.query.resourceId ? req.query.resourceId : undefined;
+    const actor = typeof req.query.actor === "string" && req.query.actor ? req.query.actor : undefined;
+    const from = typeof req.query.from === "string" && !Number.isNaN(Date.parse(req.query.from)) ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" && !Number.isNaN(Date.parse(req.query.to)) ? req.query.to : undefined;
+    res.json(await readAuditLogs(req.user!, { limit, offset, action, resourceType, resourceId, actor, from, to }, req.ip));
   })
 );

@@ -8,10 +8,15 @@
  */
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
-import { companyDocsSatisfyVerification, missingRequiredDocs, normalizeNrc } from "@hyper/shared";
+import {
+  companyDocsSatisfyVerification,
+  currentDeclarationVersion,
+  missingRequiredDocs,
+  normalizeNrc,
+} from "@hyper/shared";
 import { withContext, type AppContext } from "../../db/pool";
 import { writeAudit } from "../../lib/audit";
-import { badRequest, conflict, notFound } from "../../lib/errors";
+import { badRequest, conflict, declarationOutdated, notFound } from "../../lib/errors";
 import { isUniqueViolation } from "../../lib/dbErrors";
 import type { AuthUser } from "../../types/auth";
 import { hashPassword } from "../auth/password";
@@ -59,6 +64,12 @@ export interface RegisterCompanyInput {
 }
 
 export async function registerCompany(input: RegisterCompanyInput) {
+  // Refuse a version other than the one in force. A page left open across a
+  // deployment would otherwise file agreement to wording its reader never saw,
+  // and this table exists precisely to be trusted on that point.
+  if (input.declaration.version !== currentDeclarationVersion("registration")) {
+    throw declarationOutdated();
+  }
   const passwordHash = await hashPassword(input.admin.password);
 
   // Generate the id up front and pin the RLS context to it, so the new
@@ -123,7 +134,11 @@ export async function registerCompany(input: RegisterCompanyInput) {
       `INSERT INTO company_declarations
          (company_id, company_user_id, kind, declaration_version)
        VALUES ($1, $2, 'registration', $3)`,
-      [company.id, userId, input.declaration.version]
+      // The server's own version, never the client's. They are equal by this
+      // point — the check above rejects anything else — but writing the
+      // constant means a future caller that forgets to send one cannot file a
+      // record claiming agreement to nothing in particular.
+      [company.id, userId, currentDeclarationVersion("registration")]
     );
 
     // Welcome credits are NOT granted here. A company that has only filled in a
@@ -368,17 +383,33 @@ export async function getCompanyDetail(companyId: string, admin: AuthUser) {
   });
 }
 
-export async function listCompanies(ctx: AppContext, status?: string) {
+export async function listCompanies(
+  ctx: AppContext,
+  query: { status?: string; q?: string; limit?: number; offset?: number } | string = {}
+) {
   return withContext(ctx, async (client) => {
-    const res = status
-      ? await client.query<CompanyRow>(
-          `SELECT * FROM companies WHERE status = $1 ORDER BY created_at DESC LIMIT 200`,
-          [status]
-        )
-      : await client.query<CompanyRow>(
-          `SELECT * FROM companies ORDER BY created_at DESC LIMIT 200`
-        );
-    return res.rows.map(publicCompany);
+    const options = typeof query === "string" ? { status: query } : query;
+    const status = options.status ?? null;
+    const search = options.q?.trim() ?? "";
+    const limit = options.limit ?? 25;
+    const offset = options.offset ?? 0;
+    const where = `WHERE ($1::text IS NULL OR status = $1)
+      AND ($2 = '' OR legal_name ILIKE '%' || $2 || '%'
+        OR registration_number ILIKE '%' || $2 || '%')`;
+    const res = await client.query<CompanyRow>(
+      `SELECT * FROM companies ${where} ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
+      [status, search, limit, offset]
+    );
+    const count = await client.query<{ total: string }>(
+      `SELECT count(*)::text AS total FROM companies ${where}`,
+      [status, search]
+    );
+    return {
+      items: res.rows.map(publicCompany),
+      total: Number(count.rows[0]?.total ?? 0),
+      limit,
+      offset,
+    };
   });
 }
 

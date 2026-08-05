@@ -30,6 +30,7 @@ import {
   reportsAdminRouter,
   reportsRouter,
 } from "./modules/reports/reports.routes";
+import { getFeatureSettings } from "./modules/admin/settings.service";
 
 export function createApp(): Express {
   const app = express();
@@ -45,6 +46,9 @@ export function createApp(): Express {
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
   app.get("/ready", async (_req, res) => {
     const dbOk = await healthCheck();
+    const features = dbOk
+      ? await getFeatureSettings()
+      : { tierB: env.FEATURE_TIER_B_ENABLED, teamInvites: env.FEATURE_TEAM_INVITES_ENABLED };
     res
       .status(dbOk ? 200 : 503)
       .json({
@@ -52,8 +56,8 @@ export function createApp(): Express {
         db: dbOk,
         // The client reads these to decide what to put in the navigation, so a
         // disabled feature is absent rather than present-and-then-403.
-        tierB: env.FEATURE_TIER_B_ENABLED,
-        teamInvites: env.FEATURE_TEAM_INVITES_ENABLED,
+        tierB: features.tierB,
+        teamInvites: features.teamInvites,
       });
   });
 

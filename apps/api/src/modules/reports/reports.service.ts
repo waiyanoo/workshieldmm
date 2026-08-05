@@ -29,8 +29,14 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { withContext, type AppContext } from "../../db/pool";
 import { writeAudit } from "../../lib/audit";
-import { badRequest, conflict, forbidden, notFound } from "../../lib/errors";
-import { normalizeNrc } from "@hyper/shared";
+import {
+  badRequest,
+  conflict,
+  declarationOutdated,
+  forbidden,
+  notFound,
+} from "../../lib/errors";
+import { currentDeclarationVersion, normalizeNrc } from "@hyper/shared";
 import { hashNationalId } from "../../lib/crypto";
 import { REPORT_ACCEPTED_REWARD, grantCredits, spendCredits } from "../credits/credits.service";
 import { presignGet, putObject } from "../../lib/storage";
@@ -240,6 +246,10 @@ export async function submitReport(
   declaration: { accepted: true; version: string },
   ip?: string | null
 ) {
+  // See registerCompany: the version accepted must be the version on offer.
+  if (declaration.version !== currentDeclarationVersion("report_submission")) {
+    throw declarationOutdated();
+  }
   return withContext(ctxForUser(user), async (client) => {
     const evidence = await client.query(`SELECT 1 FROM evidence_files WHERE report_id = $1`, [
       reportId,
@@ -267,7 +277,8 @@ export async function submitReport(
       `INSERT INTO company_declarations
          (company_id, company_user_id, conduct_report_id, kind, declaration_version)
        VALUES ($1, $2, $3, 'report_submission', $4)`,
-      [user.companyId, user.id, reportId, declaration.version]
+      // See companies.service: the recorded version is the server's.
+      [user.companyId, user.id, reportId, currentDeclarationVersion("report_submission")]
     );
 
     await writeAudit(client, {

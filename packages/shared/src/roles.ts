@@ -1,13 +1,13 @@
 /**
  * Roles across the platform. Two distinct user populations:
- *  - Platform staff (super_admin, admin_reviewer, review_board) — internal.
+ *  - Platform staff (super_admin, admin_reviewer) — internal.
  *  - Company users (company_admin, company_user) — subscribing employers.
  *
  * Data subjects (the individual a check/report concerns) intentionally have
  * NO login (concept §4); they act through signed, single-purpose tokens.
  */
 
-export const PLATFORM_ROLES = ["super_admin", "admin_reviewer", "review_board"] as const;
+export const PLATFORM_ROLES = ["super_admin", "admin_reviewer"] as const;
 export type PlatformRole = (typeof PLATFORM_ROLES)[number];
 
 export const COMPANY_ROLES = ["company_admin", "company_user"] as const;
@@ -25,7 +25,6 @@ export type Role = PlatformRole | CompanyRole;
 export const MFA_REQUIRED_ROLES: readonly Role[] = [
   "super_admin",
   "admin_reviewer",
-  "review_board",
 ];
 
 export function isPlatformRole(role: string): role is PlatformRole {

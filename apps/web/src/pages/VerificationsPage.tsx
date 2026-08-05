@@ -37,6 +37,12 @@ interface Verification {
   infoRequestedAt: string | null;
 }
 
+const VERIFICATION_STATUSES = ["pending", "need_more_info", "record_confirmed", "not_found"] as const;
+
+function displayVerificationStatus(status: string) {
+  return status === "completed" ? "record_confirmed" : status;
+}
+
 export function VerificationsPage() {
   const { t } = useTranslation();
   const [fullName, setFullName] = useState("");
@@ -146,6 +152,19 @@ export function VerificationsPage() {
         <CardContent>
           <Typography variant="subtitle1" gutterBottom>{t("verifications.recent")}</Typography>
           <Divider sx={{ mb: 1 }} />
+          <Box sx={{ p: 1.5, mb: 2, borderRadius: 2, bgcolor: "rgba(47,107,255,0.055)", border: "1px solid rgba(47,107,255,0.12)" }}>
+            <Typography variant="subtitle2" mb={1}>{t("verifications.statusGuide")}</Typography>
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" }, gap: 1.25 }}>
+              {VERIFICATION_STATUSES.map((status) => (
+                <Stack key={status} direction="row" spacing={1} alignItems="center">
+                  <Box sx={{ flexShrink: 0 }}><StatusChip status={status} /></Box>
+                  <Typography variant="caption" color="text.secondary" lineHeight={1.45}>
+                    {t(`verifications.statusHelp.${status}`)}
+                  </Typography>
+                </Stack>
+              ))}
+            </Box>
+          </Box>
           {items.length === 0 ? (
             <Typography variant="body2" color="text.secondary">{t("verifications.noChecks")}</Typography>
           ) : (
@@ -166,7 +185,12 @@ export function VerificationsPage() {
                     <TableCell>{v.subjectName ?? "—"}</TableCell>
                     <TableCell>{formatCalendarDate(v.dateOfBirth)}</TableCell>
                     <TableCell sx={{ fontFamily: "monospace" }}>{v.id.slice(0, 8)}</TableCell>
-                    <TableCell><StatusChip status={v.status} /></TableCell>
+                    <TableCell>
+                      <StatusChip
+                        status={displayVerificationStatus(v.status)}
+                        tooltip={t(`verifications.statusHelp.${displayVerificationStatus(v.status)}`)}
+                      />
+                    </TableCell>
                     <TableCell>
                       {/* A parked check is only actionable if we say what is
                           being asked for and give them somewhere to answer. */}

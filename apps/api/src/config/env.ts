@@ -14,12 +14,19 @@ import { z } from "zod";
 // The API runs from apps/api (npm workspace cwd), but the single source-of-truth
 // .env lives at the repo root. Walk up from cwd to the nearest .env so both
 // `npm run dev` and `npm run migrate -w @hyper/api` load the same config.
+//
+// Under NODE_ENV=test, .env.test is loaded FIRST and .env second. dotenv never
+// overwrites a variable that is already set, so .env.test wins where it speaks
+// and .env fills in the rest — which is why .env.test only needs to name the
+// handful of things tests must not share with development (its own database,
+// its own Redis keyspace).
 (function loadNearestEnv() {
+  const names = process.env.NODE_ENV === "test" ? [".env.test", ".env"] : [".env"];
   let dir = process.cwd();
   for (let i = 0; i < 6; i++) {
-    const candidate = join(dir, ".env");
-    if (existsSync(candidate)) {
-      loadDotenv({ path: candidate });
+    const found = names.map((n) => join(dir, n)).filter(existsSync);
+    if (found.length) {
+      for (const path of found) loadDotenv({ path });
       return;
     }
     const parent = dirname(dir);

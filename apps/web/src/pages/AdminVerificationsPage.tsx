@@ -16,13 +16,16 @@ import {
   Box,
   Button,
   CardContent,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   MenuItem,
+  Skeleton,
   Stack,
   TableBody,
   TableCell,
@@ -41,6 +44,7 @@ import InboxIcon from "@mui/icons-material/Inbox";
 import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
 import SpeedIcon from "@mui/icons-material/Speed";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { apiErrorMessage } from "../i18n/apiError";
 import { useAuth } from "../auth/AuthContext";
@@ -125,17 +129,20 @@ function age(hours: number, t: Translate): string {
 export function AdminVerificationsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [items, setItems] = useState<QueueItem[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // Filters
-  const [status, setStatus] = useState("pending");
-  const [assignment, setAssignment] = useState("all");
-  const [q, setQ] = useState("");
-  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [status, setStatus] = useState(() => searchParams.get("status") ?? "pending");
+  const [assignment, setAssignment] = useState(() => searchParams.get("assignment") ?? "all");
+  const [q, setQ] = useState(() => searchParams.get("q") ?? "");
+  const [overdueOnly, setOverdueOnly] = useState(() => searchParams.get("overdue") === "true");
 
   // Decision dialog
   const [deciding, setDeciding] = useState<QueueItem | null>(null);
@@ -152,9 +159,12 @@ export function AdminVerificationsPage() {
   const [sourceStartDate, setSourceStartDate] = useState("");
   const [sourceEndDate, setSourceEndDate] = useState("");
   const [sourceEvidence, setSourceEvidence] = useState("");
+  const [consentReviewed, setConsentReviewed] = useState(false);
+  const [sourceReviewed, setSourceReviewed] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
+    setLoading(true);
     try {
       const params = new URLSearchParams({ status, assignment });
       if (q.trim()) params.set("q", q.trim());
@@ -165,8 +175,11 @@ export function AdminVerificationsPage() {
       ]);
       setItems(queue.items);
       setStats(s);
+      setSearchParams({ status, assignment, ...(q.trim() ? { q: q.trim() } : {}), ...(overdueOnly ? { overdue: "true" } : {}) }, { replace: true });
     } catch (err) {
       setError(apiErrorMessage(err));
+    } finally {
+      setLoading(false);
     }
   }, [status, assignment, q, overdueOnly]);
 
@@ -207,6 +220,8 @@ export function AdminVerificationsPage() {
     setSourceStartDate("");
     setSourceEndDate("");
     setSourceEvidence("");
+    setConsentReviewed(false);
+    setSourceReviewed(false);
     try {
       setContext(await api<VerificationContext>(`/admin/verifications/${v.id}/context`));
     } catch (err) {
@@ -216,6 +231,7 @@ export function AdminVerificationsPage() {
 
   async function decide(next: "completed" | "not_found") {
     if (!deciding) return;
+    const nextItem = items.find((item) => item.id !== deciding.id && item.status === "pending");
     setBusy(true);
     try {
       // The note is saved first: if it says "called HR, line disconnected", it
@@ -243,8 +259,9 @@ export function AdminVerificationsPage() {
           },
         },
       });
-      setDeciding(null);
       await load();
+      setNotice(t(next === "completed" ? "admin.verificationConfirmedNotice" : "admin.verificationNotFoundNotice"));
+      if (nextItem) await openReview(nextItem); else setDeciding(null);
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
@@ -254,14 +271,16 @@ export function AdminVerificationsPage() {
 
   async function askEmployer() {
     if (!deciding) return;
+    const nextItem = items.find((item) => item.id !== deciding.id && item.status === "pending");
     setBusy(true);
     try {
       await api(`/admin/verifications/${deciding.id}/request-info`, {
         method: "POST",
         body: { question: question.trim() },
       });
-      setDeciding(null);
       await load();
+      setNotice(t("admin.informationRequestedNotice"));
+      if (nextItem) await openReview(nextItem); else setDeciding(null);
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
@@ -279,6 +298,7 @@ export function AdminVerificationsPage() {
           {error}
         </Alert>
       )}
+      {notice && <Alert severity="success" onClose={() => setNotice(null)}>{notice}</Alert>}
 
       {stats && (
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", lg: "repeat(4, minmax(0, 1fr))" }, gap: 2 }}>
@@ -336,6 +356,7 @@ export function AdminVerificationsPage() {
               exclusive
               value={assignment}
               onChange={(_, v) => v && setAssignment(v)}
+              sx={{ width: { xs: "100%", md: "auto" }, overflowX: "auto", "& .MuiToggleButton-root": { flex: { xs: 1, md: "initial" }, whiteSpace: "nowrap" } }}
             >
               <ToggleButton value="all">{t("queue.everyone")}</ToggleButton>
               <ToggleButton value="me">{t("queue.mine")}</ToggleButton>
@@ -359,9 +380,12 @@ export function AdminVerificationsPage() {
             >
               {t("queue.overdueOnly")}
             </ToggleButton>
+            {(status !== "pending" || assignment !== "all" || q || overdueOnly) && <Button onClick={() => { setStatus("pending"); setAssignment("all"); setQ(""); setOverdueOnly(false); }}>{t("common.clearFilters")}</Button>}
           </Stack>
 
-          {items.length === 0 ? (
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap mb={1}><Typography variant="body2" color="text.secondary">{t("common.resultCount", { count: items.length })}</Typography>{status !== "pending" && <Chip size="small" label={t(`status.${status}`, { defaultValue: status })} />}{assignment !== "all" && <Chip size="small" label={t(`queue.${assignment}`, { defaultValue: assignment })} />}{q && <Chip size="small" label={`${t("common.search")}: ${q}`} />}{overdueOnly && <Chip size="small" label={t("queue.overdueOnly")} />}</Stack>
+
+          {loading ? <Stack spacing={1}>{[1, 2, 3].map((key) => <Skeleton key={key} height={54} />)}</Stack> : items.length === 0 ? (
             <EmptyState title={t("admin.noChecks")} hint={t("queue.noneMatch")} />
           ) : (
             <ScrollableTable minWidth={1080}>
@@ -595,6 +619,12 @@ export function AdminVerificationsPage() {
 
             <Divider />
 
+            <Stack spacing={0.5}>
+              <Typography variant="subtitle2">{t("admin.reviewChecklist")}</Typography>
+              <FormControlLabel control={<Checkbox checked={consentReviewed} onChange={(e) => setConsentReviewed(e.target.checked)} />} label={t("admin.checkConsentReviewed")} />
+              <FormControlLabel control={<Checkbox checked={sourceReviewed} onChange={(e) => setSourceReviewed(e.target.checked)} />} label={t("admin.checkSourceRecorded")} />
+            </Stack>
+
             {/* Internal. The helper text says so, so nobody writes something
                 here expecting the employer to read it. */}
             <TextField
@@ -661,7 +691,7 @@ export function AdminVerificationsPage() {
             )}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2, flexWrap: "wrap" }}>
+        <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2, flexWrap: "wrap", position: "sticky", bottom: 0, bgcolor: "background.paper", zIndex: 1 }}>
           <Button onClick={() => setDeciding(null)} disabled={busy}>
             {t("common.cancel")}
           </Button>
@@ -693,7 +723,7 @@ export function AdminVerificationsPage() {
               <Button
                 color="inherit"
                 variant="outlined"
-                disabled={busy || !sourceCompany.trim() || !sourceContact.trim() || sourceResponse === "employment_confirmed"}
+                disabled={busy || !consentReviewed || !sourceReviewed || !sourceCompany.trim() || !sourceContact.trim() || sourceResponse === "employment_confirmed"}
                 onClick={() => void decide("not_found")}
               >
                 {t("admin.noRecordFound")}
@@ -701,7 +731,7 @@ export function AdminVerificationsPage() {
               <Button
                 variant="contained"
                 color="success"
-                disabled={busy || !sourceCompany.trim() || !sourceContact.trim() || sourceResponse !== "employment_confirmed"}
+                disabled={busy || !consentReviewed || !sourceReviewed || !sourceCompany.trim() || !sourceContact.trim() || sourceResponse !== "employment_confirmed"}
                 onClick={() => void decide("completed")}
               >
                 {t("admin.recordConfirmed")}

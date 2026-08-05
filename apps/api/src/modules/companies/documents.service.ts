@@ -7,12 +7,12 @@
  * Admin viewing an NRC copy becomes a logged, justified access event (concept §4).
  */
 import { createHash, randomUUID } from "node:crypto";
-import type { CompanyDocumentType } from "@hyper/shared";
+import { companyDocsSatisfyVerification, type CompanyDocumentType } from "@hyper/shared";
 import { withContext, type AppContext } from "../../db/pool";
 import { writeAudit } from "../../lib/audit";
 import { badRequest, forbidden, notFound } from "../../lib/errors";
 import { presignGet, putObject } from "../../lib/storage";
-import { notify } from "../notifications/notifications.service";
+import { notify, notifyPlatform } from "../notifications/notifications.service";
 import type { AuthUser } from "../../types/auth";
 
 const ALLOWED_CONTENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
@@ -78,6 +78,37 @@ export async function uploadCompanyDocument(
        RETURNING id, doc_type, content_type, byte_size, uploaded_at`,
       [companyId, docType, key, fileHash, file.mimetype, file.size, user.id]
     );
+    // Tell reviewers when THIS upload is the one that completes the set. A
+    // company that has finished its paperwork is otherwise invisible inside a
+    // "companies pending" count that also holds everyone still missing a file.
+    //
+    // Fired on completion rather than deduplicated per company, so a company
+    // that has a document rejected and uploads a replacement is announced
+    // again — which is correct: there is something new to review.
+    const uploaded = await client.query<{ doc_type: string }>(
+      `SELECT DISTINCT doc_type FROM company_documents WHERE company_id = $1`,
+      [companyId]
+    );
+    const types = uploaded.rows.map((r) => r.doc_type);
+    const before = types.filter((t) => t !== docType);
+    const company = await client.query<{ legal_name: string; status: string }>(
+      `SELECT legal_name, status FROM companies WHERE id = $1`,
+      [companyId]
+    );
+    if (
+      company.rows[0]?.status === "pending" &&
+      companyDocsSatisfyVerification(types) &&
+      !companyDocsSatisfyVerification(before)
+    ) {
+      await notifyPlatform(client, {
+        audience: "platform_review",
+        kind: "company.documents_ready",
+        companyId,
+        params: { company: company.rows[0].legal_name },
+        link: `/admin/companies/${companyId}`,
+      });
+    }
+
     await writeAudit(client, {
       actorId: user.id,
       actorType: "user",

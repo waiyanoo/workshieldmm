@@ -126,6 +126,14 @@ describe("credit purchase", () => {
       .set("Authorization", `Bearer ${adminToken}`);
     expect(queue.body.items.some((p: { id: string }) => p.id === intent.id)).toBe(true);
 
+    const operations = await request(app)
+      .get("/admin/operations")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(
+      operations.body.workItems.some((item: { kind: string }) => item.kind === "payment")
+    ).toBe(true);
+
     // Only the admin's confirm grants them.
     const confirmed = await request(app)
       .post(`/admin/payments/${intent.id}/decision`)

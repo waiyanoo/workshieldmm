@@ -8,14 +8,14 @@ import { logger } from "./lib/logger";
 import { pool } from "./db/pool";
 import { redis } from "./lib/redis";
 import { closeQueues } from "./jobs/queues";
+import { getFeatureSettings } from "./modules/admin/settings.service";
 
 const app = createApp();
 
 const server = app.listen(env.PORT, () => {
-  logger.info(
-    { port: env.PORT, env: env.NODE_ENV, tierB: env.FEATURE_TIER_B_ENABLED },
-    "api listening"
-  );
+  void getFeatureSettings()
+    .then((features) => logger.info({ port: env.PORT, env: env.NODE_ENV, ...features }, "api listening"))
+    .catch((err) => logger.error({ err, port: env.PORT }, "api listening, but feature settings could not be read"));
 });
 
 async function shutdown(signal: string): Promise<void> {

@@ -13,7 +13,9 @@
     "create:platform-user": "tsx src/scripts/create-platform-user.ts",
     "worker": "tsx src/jobs/worker.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "tsx src/db/prepare-test-db.ts && vitest run",
+    "test:fast": "vitest run",
+    "test:db": "tsx src/db/prepare-test-db.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.699.0",

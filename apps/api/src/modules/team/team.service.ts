@@ -25,8 +25,8 @@ import { writeAudit } from "../../lib/audit";
 import { badRequest, conflict, forbidden, notFound } from "../../lib/errors";
 import { isUniqueViolation } from "../../lib/dbErrors";
 import { hashPassword } from "../auth/password";
-import { env } from "../../config/env";
 import type { AuthUser } from "../../types/auth";
+import { getFeatureSettings } from "../admin/settings.service";
 
 const SYSTEM_CTX: AppContext = { userType: "system" };
 
@@ -56,6 +56,7 @@ function requireCompanyAdmin(user: AuthUser): string {
 // --- Reading the team ---------------------------------------------------------
 
 export async function listTeam(user: AuthUser) {
+  const features = await getFeatureSettings();
   if (!user.companyId) throw forbidden("A company context is required");
 
   return withContext(ctxForUser(user), async (client) => {
@@ -119,7 +120,7 @@ export async function listTeam(user: AuthUser) {
       canManage: user.role === "company_admin",
       // Advertised so the screen can leave the invite controls out entirely
       // rather than showing a button that returns 403.
-      invitesEnabled: env.FEATURE_TEAM_INVITES_ENABLED,
+      invitesEnabled: features.teamInvites,
       members: users.rows.map((u) => ({
         id: u.id,
         fullName: u.full_name,

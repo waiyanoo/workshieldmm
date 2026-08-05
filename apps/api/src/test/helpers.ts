@@ -1,4 +1,5 @@
 /** Shared helpers for integration tests. */
+import { currentDeclarationVersion } from "@hyper/shared";
 import { authenticator } from "otplib";
 import { pool } from "../db/pool";
 import { hashPassword } from "../modules/auth/password";
@@ -23,7 +24,25 @@ export function companyRegistrationPayload() {
       // normalisation rather than falling through the not-an-NRC path.
       nationalId: "12/OUKAMA(N)123456",
     },
-    declaration: { accepted: true as const, version: "2026-08" },
+    // Whatever is current, so bumping a declaration does not break every
+    // fixture that merely needs a company to exist.
+    declaration: {
+      accepted: true as const,
+      version: currentDeclarationVersion("registration"),
+    },
+  };
+}
+
+/**
+ * The declaration accepted when submitting a conduct report, at whatever
+ * version is currently on offer. Never hard-code the version in a test: the
+ * API refuses a stale one, so a literal turns a deliberate wording change into
+ * a pile of unrelated failures.
+ */
+export function reportDeclaration() {
+  return {
+    accepted: true as const,
+    version: currentDeclarationVersion("report_submission"),
   };
 }
 
@@ -50,7 +69,7 @@ export function verificationSource(response: "employment_confirmed" | "no_record
  * can generate valid TOTP codes for login.
  */
 export async function createPlatformUser(
-  role: "super_admin" | "admin_reviewer" | "review_board"
+  role: "super_admin" | "admin_reviewer"
 ) {
   const email = `${uniq(role)}@hyper.local`;
   const password = "Sup3rStrong!";
@@ -97,4 +116,33 @@ export async function approveCompanyDocuments(
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ decision: "approved" });
   }
+}
+
+/**
+ * Make sure a payment method exists before anything tries to pay with it.
+ *
+ * Nothing can be bought until an administrator has configured a wallet, so a
+ * test that creates a payment intent has to arrange one. It goes through the
+ * real admin endpoint rather than a direct insert, because the RLS write policy
+ * admits platform staff only and that is the behaviour worth relying on.
+ *
+ * Call it in every file that pays for something. Depending on another test file
+ * having created one first works only by accident of run order, and stops
+ * working the moment that file is run alone.
+ */
+export async function ensurePaymentMethod(
+  app: import("express").Express,
+  adminToken: string,
+  provider: "kbzpay" | "wavepay" | "mmqr" | "bank_transfer" = "kbzpay"
+): Promise<void> {
+  const request = (await import("supertest")).default;
+  await request(app)
+    .post("/admin/payment-methods")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .field("provider", provider)
+    .field("displayName", provider)
+    .field("accountName", "Dragon Innovation")
+    .field("accountNumber", "09-000000000")
+    .field("active", "true")
+    .expect(200);
 }

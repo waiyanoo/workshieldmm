@@ -37,6 +37,7 @@ import InsightsIcon from "@mui/icons-material/Insights";
 import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
 import PolicyIcon from "@mui/icons-material/Policy";
 import KeyIcon from "@mui/icons-material/VpnKey";
+import SettingsIcon from "@mui/icons-material/Settings";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "./LanguageSwitcher";
@@ -130,6 +131,7 @@ function navFor(
       { label: t("nav.promotions"), to: "/admin/promotions", icon: <LocalOfferIcon /> },
       { label: t("nav.reportCategories"), to: "/admin/report-categories", icon: <CategoryIcon /> },
       { label: t("nav.accounts"), to: "/admin/accounts", icon: <ManageAccountsIcon /> },
+      { label: t("nav.settings"), to: "/admin/settings", icon: <SettingsIcon /> },
       { label: t("nav.auditLogs"), to: "/admin/audit", icon: <ReceiptLongIcon /> },
     ];
     if (tierB) {
@@ -166,10 +168,11 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/promotions": "nav.promotions",
   "/admin/report-categories": "nav.reportCategories",
   "/admin/accounts": "nav.accounts",
+  "/admin/settings": "nav.settings",
   "/admin/audit": "nav.auditLogs",
 };
 
-function SidebarContent() {
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -254,6 +257,7 @@ function SidebarContent() {
                   component={RouterLink}
                   to={item.to}
                   selected={selected}
+                  onClick={onNavigate}
                   sx={{
                     mx: 1.5,
                     my: 0.25,
@@ -309,6 +313,7 @@ function SidebarContent() {
           <IconButton
             size="small"
             onClick={() => {
+              onNavigate?.();
               logout();
               navigate("/login");
             }}
@@ -369,7 +374,7 @@ export function Layout({ children }: { children: ReactNode }) {
           "& .MuiDrawer-paper": { width: DRAWER_WIDTH, border: 0 },
         }}
       >
-        <SidebarContent />
+        <SidebarContent onNavigate={() => setMobileOpen(false)} />
       </Drawer>
 
       {/* Main */}
@@ -414,9 +419,11 @@ export function Layout({ children }: { children: ReactNode }) {
                   }}
                 />
               )}
-              {/* Notices are company-facing; platform staff have the admin
-                  queues, which serve the same purpose for them. */}
-              {user?.userType === "company" && <NotificationBell />}
+              {/* Both audiences. Companies hear about their own account; staff
+                  hear about the work no queue owns — a payment waiting to be
+                  matched, a company that has finished its paperwork. The API
+                  decides which notices each caller actually sees. */}
+              {user && <NotificationBell />}
               <LanguageSwitcher />
             </Stack>
           </Toolbar>

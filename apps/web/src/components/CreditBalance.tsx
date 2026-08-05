@@ -6,9 +6,10 @@
  * of whatever expires next — otherwise a drop in the balance looks arbitrary.
  */
 import { useEffect, useState } from "react";
-import { Alert, Box, Card, CardContent, Chip, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button, Card, CardContent, Chip, Stack, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import { alpha } from "@mui/material/styles";
+import { Link as RouterLink } from "react-router-dom";
 import { api } from "../api/client";
 import { apiErrorMessage } from "../i18n/apiError";
 import { brand } from "../theme";
@@ -20,7 +21,13 @@ interface CreditSummary {
   recent: { delta: number; action: string; resourceType: string | null; createdAt: string }[];
 }
 
-export function CreditBalance({ glass = false }: { glass?: boolean }) {
+export function CreditBalance({
+  glass = false,
+  compact = false,
+}: {
+  glass?: boolean;
+  compact?: boolean;
+}) {
   const { t } = useTranslation();
   const [summary, setSummary] = useState<CreditSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +92,18 @@ export function CreditBalance({ glass = false }: { glass?: boolean }) {
             </Alert>
           )}
 
-          <Box>
+          {compact && (
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+              <Button component={RouterLink} to="/billing" variant="contained">
+                {t("nav.buyCredits")}
+              </Button>
+              <Button component={RouterLink} to="/receipts" variant="outlined">
+                {t("nav.receipts")}
+              </Button>
+            </Stack>
+          )}
+
+          {!compact && <Box>
             <Typography variant="caption" color="text.secondary" fontWeight={700}>
               {t("credits.whatThingsCost").toUpperCase()}
             </Typography>
@@ -105,9 +123,9 @@ export function CreditBalance({ glass = false }: { glass?: boolean }) {
             <Typography variant="caption" color="text.secondary">
               {t("credits.lifetimes")}
             </Typography>
-          </Box>
+          </Box>}
 
-          {summary.recent.length > 0 && (
+          {!compact && summary.recent.length > 0 && (
             <Box>
               <Typography variant="caption" color="text.secondary" fontWeight={700}>
                 {t("credits.recentActivity").toUpperCase()}

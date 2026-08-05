@@ -10,7 +10,7 @@ import { env } from "../config/env";
 import { logger } from "../lib/logger";
 import { pool } from "../db/pool";
 import { redis } from "../lib/redis";
-import { expireReports } from "./lifecycle";
+import { expireReports, warnExpiringPromotions } from "./lifecycle";
 import {
   expireCredits,
   grantMonthlyCredits,
@@ -43,6 +43,10 @@ const lifecycleWorker = new Worker(
     // Unpaid purchase requests lapse so the queue and reference codes stay real.
     const staleIntents = await expirePaymentIntents();
     if (staleIntents) logger.info({ staleIntents }, "payment intents expired");
+
+    // Super Admins hear about a promotion ending before their customers do.
+    const promos = await warnExpiringPromotions();
+    if (promos.length) logger.info({ promos }, "promotion expiry warnings raised");
   },
   { connection }
 );

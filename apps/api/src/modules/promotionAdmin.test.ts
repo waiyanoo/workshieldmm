@@ -27,6 +27,15 @@ beforeAll(async () => {
   ({ redis } = await import("../lib/redis"));
   helpers = await import("../test/helpers");
   ({ closeQueues } = await import("../jobs/queues"));
+
+  // Nothing can be paid for until a wallet is configured. Seeded here so
+  // this file passes on its own, rather than inheriting a method that some
+  // earlier test file happened to create.
+  await helpers.ensurePaymentMethod(
+    app,
+    await loginPlatform(await helpers.createSuperAdmin()),
+    "mmqr"
+  );
 });
 
 afterAll(async () => {
