@@ -4,7 +4,7 @@
  */
 import express, { type Express } from "express";
 import helmet from "helmet";
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import { pinoHttp } from "pino-http";
 import { logger } from "./lib/logger";
 import { env } from "./config/env";
@@ -32,12 +32,49 @@ import {
 } from "./modules/reports/reports.routes";
 import { getFeatureSettings } from "./modules/admin/settings.service";
 
+/**
+ * Which browser origins may call this API.
+ *
+ * Requests with NO Origin header are allowed through: health checks from a load
+ * balancer, curl, and server-to-server calls have no origin, and CORS is not a
+ * control over those anyway — it only ever constrains what a browser will let
+ * one page do to another. Blocking them would break readiness probes while
+ * securing nothing.
+ *
+ * A disallowed origin is answered WITHOUT the access-control headers rather
+ * than with an error. That is what the browser needs to refuse the response,
+ * and it keeps the failure in the console of the offending page instead of
+ * turning into a 500 in our logs.
+ */
+function corsOptions(): CorsOptions {
+  const allowed = new Set(
+    env.CORS_ORIGINS.length > 0
+      ? env.CORS_ORIGINS
+      : // Development convenience only. Production cannot reach this branch:
+        // config/env refuses to boot without an explicit list.
+        ["http://localhost:5173", "http://127.0.0.1:5173"]
+  );
+  return {
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      callback(null, allowed.has(origin.replace(/\/$/, "")));
+    },
+    // Bearer tokens in the Authorization header, never cookies — so the browser
+    // has no credentials to withhold and enabling this would only widen things.
+    credentials: false,
+    // Preflight for JSON and multipart uploads carrying a bearer token.
+    allowedHeaders: ["Authorization", "Content-Type"],
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    maxAge: 600,
+  };
+}
+
 export function createApp(): Express {
   const app = express();
 
   app.set("trust proxy", 1); // behind a load balancer in prod; real client IP for limits/audit
   app.use(helmet());
-  app.use(cors());
+  app.use(cors(corsOptions()));
   app.use(express.json({ limit: "1mb" }));
   app.use(pinoHttp({ logger }));
   app.use(globalLimiter);

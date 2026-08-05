@@ -81,6 +81,28 @@ const schema = z.object({
   FEATURE_TEAM_INVITES_ENABLED: boolish.default("false"),
 
   REPORT_EXPIRY_YEARS: z.coerce.number().int().min(1).max(10).default(5),
+
+  /**
+   * Browser origins allowed to call this API, comma-separated.
+   *
+   * Required in production. The API is bearer-token rather than cookie
+   * authenticated, so a permissive policy is not the same hole it would be for
+   * a session-cookie app — but it still lets any page on the internet script
+   * this API against a token it has obtained, and it means a misconfigured
+   * deployment looks healthy right up until it is abused. An explicit list also
+   * fails loudly when someone stands up a new front end and forgets to say so.
+   *
+   * Development defaults to the Vite dev server.
+   */
+  CORS_ORIGINS: z
+    .string()
+    .optional()
+    .transform((v) =>
+      (v ?? "")
+        .split(",")
+        .map((o) => o.trim().replace(/\/$/, ""))
+        .filter(Boolean)
+    ),
 })
   .superRefine((cfg, ctx) => {
     // Evidence at rest is unencrypted unless a mode is set, and §5 requires
@@ -91,6 +113,18 @@ const schema = z.object({
         code: z.ZodIssueCode.custom,
         path: ["S3_SSE"],
         message: "must be AES256 or aws:kms in production (§5 encryption at rest)",
+      });
+    }
+    // A production API that accepts calls from anywhere is a configuration
+    // mistake, not a deployment choice, so it refuses to boot rather than
+    // running wide open.
+    if (cfg.NODE_ENV === "production" && cfg.CORS_ORIGINS.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["CORS_ORIGINS"],
+        message:
+          "is required in production — comma-separated list of the web origins " +
+          "allowed to call this API, e.g. https://app.example.com",
       });
     }
     if (cfg.S3_SSE === "aws:kms" && !cfg.S3_SSE_KMS_KEY_ID) {
