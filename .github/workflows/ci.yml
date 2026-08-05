@@ -47,23 +47,30 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-      minio:
-        # Document and evidence uploads go to object storage on the real code
-        # path, so the suite needs a bucket to write into.
-        image: bitnami/minio:latest
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-          MINIO_DEFAULT_BUCKETS: hyper-evidence
-        ports: ["9000:9000"]
-        options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-
     steps:
       - uses: actions/checkout@v4
+
+      # Object storage is a step, not a service container. Document and evidence
+      # uploads go through the real S3 code path, so the suite needs a bucket —
+      # but a service container cannot override the image's command, and the
+      # official MinIO image needs `server /data` to start at all. The image is
+      # the same one infra/docker-compose.yml uses for development.
+      - name: Start object storage
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:latest server /data
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:9000/minio/health/live >/dev/null; then
+              echo "minio ready"; break
+            fi
+            sleep 2
+          done
+          # `mc` is the image's entrypoint, so running a shell needs an override.
+          docker run --rm --network host --entrypoint sh minio/mc:latest -c \
+            "mc alias set local http://localhost:9000 minioadmin minioadmin && \
+             mc mb --ignore-existing local/hyper-evidence"
 
       - uses: actions/setup-node@v4
         with:
