@@ -1,0 +1,111 @@
+name: Deploy
+
+# Runs migrations, then hands off to whichever platform hosts the containers.
+#
+# Deliberately manual. Schema changes here are one-way — migrations are
+# immutable once applied, and several are not reversible — so a deployment is a
+# decision somebody makes, not something a merge triggers.
+#
+# Requires, in the GitHub environment named below:
+#   secret  DATABASE_MIGRATION_URL   owner-role connection string
+#   var     VITE_API_URL             public origin of the API (used at build)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: environment
+        required: true
+      image_tag:
+        description: Image tag to deploy (a commit SHA, or "latest")
+        type: string
+        required: true
+        default: latest
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Migrations run FROM THE IMAGE being deployed, not from the checkout, so
+      # the schema and the code that expects it are the same build. The runner
+      # reports pending migrations before applying anything.
+      - name: Show pending migrations
+        run: |
+          docker run --rm \
+            -e NODE_ENV=production \
+            -e DATABASE_MIGRATION_URL='${{ secrets.DATABASE_MIGRATION_URL }}' \
+            ghcr.io/${{ github.repository }}/api:${{ inputs.image_tag }} \
+            node apps/api/dist/db/migrate.js status
+
+      - name: Apply migrations
+        run: |
+          docker run --rm \
+            -e NODE_ENV=production \
+            -e DATABASE_MIGRATION_URL='${{ secrets.DATABASE_MIGRATION_URL }}' \
+            ghcr.io/${{ github.repository }}/api:${{ inputs.image_tag }} \
+            node apps/api/dist/db/migrate.js up
+
+  release:
+    runs-on: ubuntu-latest
+    needs: migrate
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 15
+
+    steps:
+      # ---------------------------------------------------------------------
+      # PLATFORM STEP — fill this in for wherever the containers run.
+      #
+      # Three services come from the SAME api image, plus the web image:
+      #
+      #   api     node apps/api/dist/index.js        (the image default)
+      #   worker  node apps/api/dist/jobs/worker.js  ← override the command
+      #   web     the nginx image, port 80
+      #
+      # The worker is not optional. Without it nothing expires, no monthly
+      # credits are granted, lapsed plans keep granting, unpaid payment intents
+      # never lapse, and promotion warnings never fire.
+      #
+      # Deploy the api and web images together: the API rejects a registration
+      # or report submission that does not carry a declaration locale, so an
+      # older bundle would start returning 400s.
+      #
+      # The api and worker services both need the full application environment.
+      # Two that will stop a production boot if missing:
+      #   CORS_ORIGINS  the web app's origin, e.g. https://app.example.com
+      #   S3_SSE        AES256 or aws:kms — never none in production
+      #
+      # Examples, depending on host:
+      #   fly.io      flyctl deploy --image ghcr.io/…/api:TAG --app …
+      #   Cloud Run   gcloud run deploy … --image ghcr.io/…/api:TAG
+      #   ECS         aws ecs update-service --force-new-deployment …
+      #   Kubernetes  kubectl set image deployment/api api=ghcr.io/…/api:TAG
+      # ---------------------------------------------------------------------
+      - name: Deploy containers
+        run: |
+          echo "No platform configured yet."
+          echo "Image: ghcr.io/${{ github.repository }}/api:${{ inputs.image_tag }}"
+          echo "Edit .github/workflows/deploy.yml to add the platform step."
+          exit 1
+
+      # Readiness, not liveness: /ready checks the database, so it fails while
+      # the app is up but cannot reach Postgres — which is the failure mode a
+      # deployment actually produces.
+      - name: Smoke check
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "${{ vars.VITE_API_URL }}/ready" >/dev/null; then
+              echo "ready"; exit 0
+            fi
+            sleep 5
+          done
+          echo "API did not become ready"; exit 1

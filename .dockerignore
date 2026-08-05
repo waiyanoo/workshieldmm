@@ -1,0 +1,26 @@
+# Build context hygiene. Everything the image needs is compiled inside it, so
+# host artefacts are excluded — they would be the wrong architecture anyway, and
+# copying node_modules is the usual reason a "small" image is 900 MB.
+node_modules
+**/node_modules
+dist
+**/dist
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Never bake secrets into a layer. .env.example is kept: it documents the
+# variables the image expects.
+.env
+.env.*
+!.env.example
+
+# Local infrastructure state — Postgres/MinIO volumes, sometimes gigabytes.
+infra/data
+
+.git
+.github
+*.log
+coverage
+
+# The web app is built by its own Dockerfile; it is not part of the API image.
+apps/web/dist
