@@ -1,0 +1,292 @@
+# =============================================================================
+# DigitalOcean App Platform spec.
+#
+# Rendered by .github/workflows/deploy.yml, which substitutes ${IMAGE_TAG} and
+# applies it with `doctl apps update`. Edit this file, not the App Platform UI —
+# an update overwrites the live spec with whatever is here.
+#
+# Three components from two images:
+#   migrate  PRE_DEPLOY job — applies migrations before anything new starts
+#   api      the API, routed at /api
+#   worker   the background sweep, no HTTP
+#   web      the SPA behind nginx, routed at /
+#
+# Before the first deploy, see the notes at the bottom of this file. Two of them
+# will bite immediately if skipped.
+# =============================================================================
+name: workshield
+region: sgp
+
+# --- Migrations -------------------------------------------------------------
+# A PRE_DEPLOY job rather than a step in GitHub Actions. DigitalOcean's managed
+# databases restrict access by trusted source, and GitHub runners have dynamic
+# IPs — migrating from CI would mean opening the database to the internet. This
+# runs inside DO's network, from the same image being deployed, and a failure
+# aborts the deployment before any new container serves traffic.
+jobs:
+  - name: migrate
+    kind: PRE_DEPLOY
+    image:
+      registry_type: GHCR
+      registry: waiyanoo
+      repository: workshieldmm/api
+      tag: "${IMAGE_TAG}"
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: node apps/api/dist/db/migrate.js up
+    envs:
+      # The runner needs only this one variable — it no longer loads the
+      # application config, so it never sees S3 or JWT secrets.
+      - key: DATABASE_MIGRATION_URL
+        scope: RUN_TIME
+        value: "${db.DATABASE_URL}"
+
+services:
+  - name: api
+    image:
+      registry_type: GHCR
+      registry: waiyanoo
+      repository: workshieldmm/api
+      tag: "${IMAGE_TAG}"
+    http_port: 4000
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    # /ready checks the database, so a container that cannot reach Postgres is
+    # never routed to. /health would pass in that state.
+    health_check:
+      http_path: /ready
+      initial_delay_seconds: 20
+      period_seconds: 30
+      failure_threshold: 3
+    routes:
+      # preserve_path_prefix defaults to false, so App Platform strips /api and
+      # the app sees /auth/login as it does locally. This also puts the API and
+      # the web app on ONE origin, which means the browser makes same-origin
+      # requests and CORS never comes into play in normal use.
+      - path: /api
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "4000"
+      - key: LOG_LEVEL
+        value: info
+
+      # NOT ${db.DATABASE_URL}. That is the cluster's admin user, and the whole
+      # tenant-isolation model rests on the application connecting as the
+      # limited `hyper_app` role instead — row-level security does not constrain
+      # a role that owns or bypasses it. CI proved this the hard way: run as the
+      # admin and six isolation tests fail because one company really can read
+      # another's data. Set this secret to the hyper_app connection string; see
+      # note 3 below.
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME_hyper_app_connection_string
+
+      # Only the migration job uses this, but the app config still validates it.
+      - key: DATABASE_MIGRATION_URL
+        scope: RUN_TIME
+        value: "${db.DATABASE_URL}"
+
+      - key: REDIS_URL
+        scope: RUN_TIME
+        value: "${redis.DATABASE_URL}"
+
+      # Object storage — see note 4. S3_SSE must be AES256 or aws:kms or the
+      # API refuses to boot, and the provider has to honour the header rather
+      # than merely encrypt at rest.
+      - key: S3_ENDPOINT
+        scope: RUN_TIME
+        value: https://sgp1.digitaloceanspaces.com
+      - key: S3_REGION
+        value: sgp1
+      - key: S3_BUCKET
+        value: workshield-evidence
+      - key: S3_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: S3_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: S3_FORCE_PATH_STYLE
+        value: "false"
+      - key: S3_SSE
+        value: AES256
+
+      - key: JWT_ACCESS_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: JWT_REFRESH_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: JWT_ACCESS_TTL
+        value: "900"
+      - key: JWT_REFRESH_TTL
+        value: "1209600"
+
+      # Identity-critical. This is the HMAC key for NRC hashing, so it IS the
+      # subject identity space: change it and every existing person becomes
+      # unreachable and duplicates on the next lookup. Generate once, store in a
+      # password manager, never rotate without a planned re-keying migration.
+      - key: SUBJECT_ID_PEPPER
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+
+      # Tier B stays off until the Phase 0 legal review is complete. This is the
+      # fallback only — since migration 0031 a Super Admin can flip it at
+      # runtime from the Settings page, and the saved row wins.
+      - key: FEATURE_TIER_B_ENABLED
+        value: "false"
+      - key: FEATURE_TEAM_INVITES_ENABLED
+        value: "false"
+      - key: REPORT_EXPIRY_YEARS
+        value: "5"
+
+      # The app's own origin. Same-origin requests carry no Origin header so
+      # this is rarely exercised, but the API refuses to boot in production
+      # without it. Replace with the custom domain once one is attached.
+      - key: CORS_ORIGINS
+        scope: RUN_TIME
+        value: "${APP_URL}"
+
+  - name: web
+    image:
+      registry_type: GHCR
+      registry: waiyanoo
+      repository: workshieldmm/web
+      tag: "${IMAGE_TAG}"
+    http_port: 80
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    # Everything not claimed by /api. Registered second because App Platform
+    # matches the most specific path first.
+    routes:
+      - path: /
+
+# --- Background worker ------------------------------------------------------
+# Not optional. Without it nothing expires, no monthly credits are granted,
+# lapsed plans keep granting, unpaid payment intents never lapse, and promotion
+# warnings never fire. Same image as the API, different command.
+workers:
+  - name: worker
+    image:
+      registry_type: GHCR
+      registry: waiyanoo
+      repository: workshieldmm/api
+      tag: "${IMAGE_TAG}"
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: node apps/api/dist/jobs/worker.js
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME_hyper_app_connection_string
+      - key: DATABASE_MIGRATION_URL
+        scope: RUN_TIME
+        value: "${db.DATABASE_URL}"
+      - key: REDIS_URL
+        scope: RUN_TIME
+        value: "${redis.DATABASE_URL}"
+      - key: S3_ENDPOINT
+        scope: RUN_TIME
+        value: https://sgp1.digitaloceanspaces.com
+      - key: S3_REGION
+        value: sgp1
+      - key: S3_BUCKET
+        value: workshield-evidence
+      - key: S3_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: S3_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: S3_FORCE_PATH_STYLE
+        value: "false"
+      - key: S3_SSE
+        value: AES256
+      - key: JWT_ACCESS_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: JWT_REFRESH_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: SUBJECT_ID_PEPPER
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: FEATURE_TIER_B_ENABLED
+        value: "false"
+      - key: FEATURE_TEAM_INVITES_ENABLED
+        value: "false"
+      - key: REPORT_EXPIRY_YEARS
+        value: "5"
+      - key: CORS_ORIGINS
+        scope: RUN_TIME
+        value: "${APP_URL}"
+
+# --- Attached data services -------------------------------------------------
+# Existing clusters, not dev databases: dev databases are single-node and are
+# destroyed with the app.
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    production: true
+    cluster_name: workshield-db
+  - name: redis
+    engine: VALKEY
+    production: true
+    cluster_name: workshield-redis
+
+# =============================================================================
+# BEFORE THE FIRST DEPLOY
+#
+# 1. Name the database `hyper`.
+#    Migration 0001 contains `GRANT CONNECT ON DATABASE hyper`, a literal. DO
+#    creates `defaultdb`, so add a database called `hyper` to the cluster and
+#    point the connection strings at it. Anything else fails on migration 0001.
+#
+# 2. Create the `hyper_app` role with a strong password.
+#    Migration 0001 creates it if absent — with a password that is in this
+#    repository's git history. Create it yourself first and the migration skips
+#    it. This is the role the app connects as; see note 3.
+#
+# 3. Set DATABASE_URL to hyper_app, not doadmin.
+#    ${db.DATABASE_URL} is the admin user. Row-level security is the entire
+#    tenant-isolation model here, and it does not constrain the role that owns
+#    the tables. Build the string by hand from the cluster host/port/database
+#    with the hyper_app credentials.
+#
+# 4. Object storage: verify SSE before go-live.
+#    The API refuses to boot unless S3_SSE is AES256 or aws:kms, and the check
+#    that matters is not encryption-at-rest — it is whether the provider honours
+#    the x-amz-server-side-encryption header on PUT. DO Spaces encrypts at rest
+#    but its handling of that header is not something to assume. Test one upload
+#    against Spaces on a staging app; if it is rejected or silently ignored, use
+#    an AWS S3 bucket in ap-southeast-1 for storage and leave the rest here.
+#
+# 5. GHCR must be reachable.
+#    Make the two packages public under Settings → Packages, or add a registry
+#    credential to the app. If GHCR is not selectable in your account, push to
+#    DOCR instead and change registry_type to DOCR.
+#
+# 6. Rebuild the web image with the real origin.
+#    VITE_API_URL is compiled into the bundle. With this routing it must be
+#    <app origin>/api — e.g. https://workshield.ondigitalocean.app/api. Update
+#    the repository variable and let CI rebuild before deploying.
+# =============================================================================
