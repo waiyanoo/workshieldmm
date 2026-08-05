@@ -98,7 +98,7 @@ jobs:
           NODE_ENV=test
           LOG_LEVEL=silent
           PORT=4000
-          DATABASE_URL=postgres://hyper:hyper_pw@localhost:5432/hyper_test
+          DATABASE_URL=postgres://hyper_app:hyper_app_pw@localhost:5432/hyper_test
           DATABASE_MIGRATION_URL=postgres://hyper:hyper_pw@localhost:5432/hyper_test
           REDIS_URL=redis://localhost:6379/1
           S3_ENDPOINT=http://localhost:9000
@@ -118,9 +118,15 @@ jobs:
           REPORT_EXPIRY_YEARS=5
           EOF
 
-      # CI runs as the owner role for both URLs: there is no separate app role
-      # in this database, and the privilege split is what production exercises,
-      # not what the suite asserts.
+      # The two URLs use DIFFERENT roles, and that is the whole point.
+      #
+      # POSTGRES_USER makes `hyper` a superuser, and superusers bypass row-level
+      # security outright — FORCE ROW LEVEL SECURITY does not apply to them. Run
+      # the suite as that role and every tenant-isolation test passes for the
+      # wrong reason: one company can read another's receipts, reports and
+      # notifications, and the assertions that say it cannot are the ones that
+      # fail. `hyper_app` is created by migration 0001 with this password, and
+      # is the limited role production uses.
       - name: Run tests
         run: npm test -w @hyper/api
 
