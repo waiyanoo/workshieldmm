@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link as RouterLink, Navigate } from "react-router-dom";
 import { Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControlLabel, Link, Stack, Step, StepLabel, Stepper, TextField, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
-import { DECLARATION_VERSIONS, currentDeclarationText } from "@hyper/shared";
+import { DECLARATION_VERSIONS, currentDeclarationText, declarationLocaleFor } from "@hyper/shared";
 import { useAuth } from "../auth/AuthContext";
 import { apiErrorMessage } from "../i18n/apiError";
 import { AuthShell } from "./LoginPage";
@@ -35,7 +35,13 @@ export function RegisterPage() {
       await register({
         company: { legalName, registrationNumber },
         admin: { fullName, email, password, nationalId },
-        declaration: { accepted: true, version: DECLARATION_VERSIONS.registration },
+        declaration: {
+          accepted: true,
+          version: DECLARATION_VERSIONS.registration,
+          // The language of the paragraph on screen, which is what the
+          // record needs — not the interface preference.
+          locale: declarationLocaleFor(i18n.language),
+        },
       });
     } catch (err) {
       setError(apiErrorMessage(err));

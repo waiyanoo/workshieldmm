@@ -13,6 +13,7 @@ import {
   currentDeclarationVersion,
   missingRequiredDocs,
   normalizeNrc,
+  type DeclarationLocale,
 } from "@hyper/shared";
 import { withContext, type AppContext } from "../../db/pool";
 import { writeAudit } from "../../lib/audit";
@@ -58,7 +59,7 @@ function ctxForUser(user: AuthUser): AppContext {
 export interface RegisterCompanyInput {
   company: { legalName: string; registrationNumber: string };
   admin: { fullName: string; email: string; password: string; nationalId: string };
-  declaration: { accepted: true; version: string };
+  declaration: { accepted: true; version: string; locale: DeclarationLocale };
   ip?: string | null;
   userAgent?: string | null;
 }
@@ -132,13 +133,13 @@ export async function registerCompany(input: RegisterCompanyInput) {
     // on the company, so the acceptance stays independently auditable.
     await client.query(
       `INSERT INTO company_declarations
-         (company_id, company_user_id, kind, declaration_version)
-       VALUES ($1, $2, 'registration', $3)`,
+         (company_id, company_user_id, kind, declaration_version, accepted_locale)
+       VALUES ($1, $2, 'registration', $3, $4)`,
       // The server's own version, never the client's. They are equal by this
       // point — the check above rejects anything else — but writing the
       // constant means a future caller that forgets to send one cannot file a
       // record claiming agreement to nothing in particular.
-      [company.id, userId, currentDeclarationVersion("registration")]
+      [company.id, userId, currentDeclarationVersion("registration"), input.declaration.locale]
     );
 
     // Welcome credits are NOT granted here. A company that has only filled in a

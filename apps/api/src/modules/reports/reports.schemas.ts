@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DECLARATION_LOCALES } from "@hyper/shared";
 
 export const createReportSchema = z.object({
   subject: z.object({
@@ -24,6 +25,10 @@ export const submitReportSchema = z.object({
   declaration: z.object({
     accepted: z.literal(true),
     version: z.string().trim().min(1).max(50),
+    // Which of the two paragraphs was on screen. Required, not defaulted: a
+    // record that guesses the language is the thing this column exists to
+    // prevent, and only the client knows what it rendered.
+    locale: z.enum(DECLARATION_LOCALES),
   }),
 });
 

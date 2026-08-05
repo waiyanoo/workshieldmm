@@ -31,7 +31,7 @@ import { EmptyState, GlassCard, PageHeader, ScrollableTable, StatusChip } from "
 import { EMPTY_NRC, NrcInput, nrcToString, type NrcValue } from "../components/NrcInput";
 import { formatCalendarDate } from "../lib/date";
 import { useTranslation } from "react-i18next";
-import { DECLARATION_VERSIONS, currentDeclarationText } from "@hyper/shared";
+import { DECLARATION_VERSIONS, currentDeclarationText, declarationLocaleFor } from "@hyper/shared";
 import { apiErrorMessage } from "../i18n/apiError";
 
 interface Category {
@@ -175,7 +175,13 @@ export function ReportsPage() {
     try {
       await api(`/reports/${reportId}/submit`, {
         method: "POST",
-        body: { declaration: { accepted: true, version: DECLARATION_VERSIONS.report_submission } },
+        body: { declaration: {
+          accepted: true,
+          version: DECLARATION_VERSIONS.report_submission,
+          // The language of the paragraph on screen, which is what the
+          // record needs — not the interface preference.
+          locale: declarationLocaleFor(i18n.language),
+        } },
       });
       setNotice(t("reports.submitted"));
       await load();

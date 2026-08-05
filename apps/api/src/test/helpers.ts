@@ -29,6 +29,7 @@ export function companyRegistrationPayload() {
     declaration: {
       accepted: true as const,
       version: currentDeclarationVersion("registration"),
+      locale: "en" as const,
     },
   };
 }
@@ -39,10 +40,11 @@ export function companyRegistrationPayload() {
  * API refuses a stale one, so a literal turns a deliberate wording change into
  * a pile of unrelated failures.
  */
-export function reportDeclaration() {
+export function reportDeclaration(locale: "en" | "my" = "en") {
   return {
     accepted: true as const,
     version: currentDeclarationVersion("report_submission"),
+    locale,
   };
 }
 

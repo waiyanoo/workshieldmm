@@ -123,8 +123,13 @@ describe("company declarations", () => {
     const companyId: string = reg.body.company.id;
 
     const rows = await withContext({ userType: "platform" }, (c) =>
-      c.query<{ kind: string; declaration_version: string; company_user_id: string }>(
-        `SELECT kind, declaration_version, company_user_id
+      c.query<{
+        kind: string;
+        declaration_version: string;
+        company_user_id: string;
+        accepted_locale: string;
+      }>(
+        `SELECT kind, declaration_version, company_user_id, accepted_locale
            FROM company_declarations WHERE company_id = $1`,
         [companyId]
       )
@@ -134,12 +139,60 @@ describe("company declarations", () => {
     expect(rows.rows[0]!.declaration_version).toBe(DECLARATION_VERSIONS.registration);
     // Attributed to the person who accepted, not just to the company.
     expect(rows.rows[0]!.company_user_id).toBeTruthy();
+    expect(rows.rows[0]!.accepted_locale).toBe("en");
+  });
+
+  it("records which language the declaration was read in", async () => {
+    // The same version reads differently in each language, so the version alone
+    // does not say what was on screen. (0033)
+    const payload = {
+      ...helpers.companyRegistrationPayload(),
+      declaration: {
+        accepted: true,
+        version: DECLARATION_VERSIONS.registration,
+        locale: "my",
+      },
+    };
+    const reg = await request(app).post("/companies").send(payload).expect(201);
+
+    const row = await withContext({ userType: "platform" }, (c) =>
+      c.query<{ accepted_locale: string; declaration_version: string }>(
+        `SELECT accepted_locale, declaration_version
+           FROM company_declarations WHERE company_id = $1`,
+        [reg.body.company.id]
+      )
+    );
+    expect(row.rows[0]!.accepted_locale).toBe("my");
+
+    // And that pair resolves to the words that were actually shown.
+    const shown = declarationText(
+      "registration",
+      row.rows[0]!.declaration_version,
+      row.rows[0]!.accepted_locale
+    );
+    expect(shown).toMatch(/[က-႟]/);
+  });
+
+  it("refuses an acceptance that does not say which language was shown", async () => {
+    const noLocale = {
+      ...helpers.companyRegistrationPayload(),
+      declaration: { accepted: true, version: DECLARATION_VERSIONS.registration },
+    };
+    expect((await request(app).post("/companies").send(noLocale)).status).toBe(400);
+
+    const badLocale = {
+      ...helpers.companyRegistrationPayload(),
+      declaration: { accepted: true, version: DECLARATION_VERSIONS.registration, locale: "fr" },
+    };
+    expect((await request(app).post("/companies").send(badLocale)).status).toBe(400);
   });
 
   it("refuses a registration accepting a version that is no longer on offer", async () => {
     const stale = {
       ...helpers.companyRegistrationPayload(),
-      declaration: { accepted: true, version: "2019-01" },
+      // locale supplied so this reaches the version check rather than failing
+      // validation first — the point is the 409, not the 400.
+      declaration: { accepted: true, version: "2019-01", locale: "en" },
     };
     const res = await request(app).post("/companies").send(stale);
     expect(res.status).toBe(409);
@@ -158,7 +211,11 @@ describe("company declarations", () => {
   it("will not accept a declaration that was not accepted", async () => {
     const notAccepted = {
       ...helpers.companyRegistrationPayload(),
-      declaration: { accepted: false, version: DECLARATION_VERSIONS.registration },
+      declaration: {
+        accepted: false,
+        version: DECLARATION_VERSIONS.registration,
+        locale: "en",
+      },
     };
     const res = await request(app).post("/companies").send(notAccepted);
     // `accepted` is a literal true, so an unticked box cannot arrive as a value
