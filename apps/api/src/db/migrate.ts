@@ -16,7 +16,43 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { Client } from "pg";
-import { env } from "../config/env";
+import { config as loadDotenv } from "dotenv";
+
+/**
+ * Read the connection string directly rather than through config/env.
+ *
+ * That module validates the WHOLE application configuration — S3 credentials,
+ * JWT secrets, the subject pepper — and refuses to load without all of it.
+ * Applying SQL needs none of that, and requiring it means a deployment's
+ * migration step has to be handed every secret the application holds, which is
+ * both awkward and more access than the job needs.
+ */
+function migrationUrl(): string {
+  // Same search as config/env: .env.test wins under NODE_ENV=test, .env fills
+  // in the rest, and in a container neither exists so the real environment is
+  // used as-is.
+  const names = process.env.NODE_ENV === "test" ? [".env.test", ".env"] : [".env"];
+  let dir = process.cwd();
+  for (let i = 0; i < 6; i++) {
+    const found = names.map((n) => join(dir, n)).filter(existsSync);
+    if (found.length) {
+      for (const path of found) loadDotenv({ path });
+      break;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  const url = process.env.DATABASE_MIGRATION_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_MIGRATION_URL is not set. Migrations run as the database OWNER, " +
+        "which is a different role from the one the application connects with."
+    );
+  }
+  return url;
+}
 
 /** Walk up from here to the repo root (the dir that contains db/migrations). */
 function findDbDir(): string {
@@ -45,7 +81,7 @@ function checksum(contents: string): string {
 }
 
 async function connect(): Promise<Client> {
-  const client = new Client({ connectionString: env.DATABASE_MIGRATION_URL });
+  const client = new Client({ connectionString: migrationUrl() });
   await client.connect();
   return client;
 }

@@ -1,0 +1,168 @@
+name: CI
+
+# Typecheck and run the integration suite against real Postgres, Redis and S3.
+# These are integration tests by design — they exercise row-level security,
+# which cannot be tested against a mock — so the services are real containers
+# rather than stubs.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        # Matches infra/docker-compose.yml. The suite needs pgcrypto, citext
+        # and btree_gist, all of which ship with the official image.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hyper
+          POSTGRES_PASSWORD: hyper_pw
+          # Named `hyper` deliberately: migration 0001 grants CONNECT on a
+          # literal database name, so any other name fails the first migration.
+          POSTGRES_DB: hyper
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U hyper"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      minio:
+        # Document and evidence uploads go to object storage on the real code
+        # path, so the suite needs a bucket to write into.
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+          MINIO_DEFAULT_BUCKETS: hyper-evidence
+        ports: ["9000:9000"]
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The API imports the compiled shared package, so this has to happen
+      # before either typecheck.
+      - name: Build shared
+        run: npm run build -w @hyper/shared
+
+      - name: Typecheck
+        run: |
+          npm run typecheck -w @hyper/shared
+          npm run typecheck -w @hyper/api
+          npm run typecheck -w @hyper/web
+
+      # `npm test` refuses to run against a database whose name does not end in
+      # _test, and creates/migrates that database itself.
+      - name: Write .env.test
+        run: |
+          cat > .env.test <<'EOF'
+          NODE_ENV=test
+          LOG_LEVEL=silent
+          PORT=4000
+          DATABASE_URL=postgres://hyper:hyper_pw@localhost:5432/hyper_test
+          DATABASE_MIGRATION_URL=postgres://hyper:hyper_pw@localhost:5432/hyper_test
+          REDIS_URL=redis://localhost:6379/1
+          S3_ENDPOINT=http://localhost:9000
+          S3_REGION=us-east-1
+          S3_BUCKET=hyper-evidence
+          S3_ACCESS_KEY=minioadmin
+          S3_SECRET_KEY=minioadmin
+          S3_FORCE_PATH_STYLE=true
+          S3_SSE=none
+          JWT_ACCESS_SECRET=ci-access-secret-not-used-anywhere-else
+          JWT_REFRESH_SECRET=ci-refresh-secret-not-used-anywhere-else
+          JWT_ACCESS_TTL=900
+          JWT_REFRESH_TTL=1209600
+          SUBJECT_ID_PEPPER=ci-pepper-not-used-anywhere-else
+          FEATURE_TIER_B_ENABLED=true
+          FEATURE_TEAM_INVITES_ENABLED=false
+          REPORT_EXPIRY_YEARS=5
+          EOF
+
+      # CI runs as the owner role for both URLs: there is no separate app role
+      # in this database, and the privilege split is what production exercises,
+      # not what the suite asserts.
+      - name: Run tests
+        run: npm test -w @hyper/api
+
+  # Images are built on every PR so a broken Dockerfile is caught before merge,
+  # but only pushed from main.
+  images:
+    runs-on: ubuntu-latest
+    needs: test
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            dockerfile: apps/api/Dockerfile
+          - name: web
+            dockerfile: apps/web/Dockerfile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # Repo root: npm workspace, lockfile at the top.
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.name }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/${{ matrix.name }}:latest
+          # The API URL is compiled into the web bundle, so it is a build
+          # argument. Set the VITE_API_URL repository variable to your API's
+          # public origin; the Dockerfile fails the build if it is empty.
+          build-args: |
+            VITE_API_URL=${{ vars.VITE_API_URL }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
